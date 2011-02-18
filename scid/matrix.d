@@ -8,27 +8,35 @@
 module scid.matrix;
 
 
-//private import std.conv;
+private import std.conv;
+import std.array : appender;  // For toString
 import std.string: format, repeat;
 import std.traits;
+import std.typetuple;
 
 import scid.core.meta;
 import scid.core.traits;
 
 version(unittest) {
-    import scid.core.testing; 
+    import scid.core.testing;
     import std.math;
 }
-
-
-
 
 /** Various matrix representations. */
 enum Storage
 {
-    General,        /// General (dense) matrices
-    Triangular,     /// Packed storage of triangular matrices
-    Symmetric,      /// Packed storage of symmetric matrices
+    general,        /// General (dense) matrices
+    triangular,     /// Packed storage of triangular matrices
+    symmetric,      /// Packed storage of symmetric matrices
+    diagonal,        /// Packed storage of diagonal matrices
+
+    // These guys are kept for now for backwards compatibility but scheduled
+    // for deprecation/removal.  The new convention is that enum members are
+    // lowerCamelCase.
+
+    General = general,
+    Triangular = triangular,
+    Symmetric = symmetric
 }
 
 
@@ -37,11 +45,13 @@ enum Storage
 */
 enum Triangle : char
 {
-    Upper = 'U',    /// Store upper triangle
-    Lower = 'L'     /// Store lower triangle
+    upper = 'U',    /// Store upper triangle
+    lower = 'L',     /// Store lower triangle
+
+    // Scheduled for deprecation/removal
+    Upper = upper,
+    Lower = lower
 }
-
-
 
 
 /** A convenience function that allocates heap memory for a matrix,
@@ -57,11 +67,11 @@ enum Triangle : char
     auto denseZeroMatrix = matrix!real(3, 2, 0.0L);
 
     // Allocate lower triangular 3x3 matrix:
-    auto loMatrix = matrix!(real, Storage.Triangular, Triangle.Lower)(3);
+    auto loMatrix = matrix!(real, Storage.triangular, Triangle.lower)(3);
 
     // Allocate upper triangular 2x2 matrix where the upper
     // triangular elements are set to 3.14.
-    auto upMatrix = matrix!(real, Storage.Triangular)(2, 3.14L);
+    auto upMatrix = matrix!(real, Storage.triangular)(2, 3.14L);
     ---
 */
 MatrixView!(T) matrix (T) (size_t rows, size_t cols) pure
@@ -81,10 +91,10 @@ MatrixView!(T) matrix(T) (size_t rows, size_t cols, T init) pure
 
 ///ditto
 MatrixView!(T, stor, tri) matrix
-    (T, Storage stor, Triangle tri = Triangle.Upper)
+    (T, Storage stor, Triangle tri = Triangle.upper)
     (size_t n, T init=T.init)
     pure
-    if (stor == Storage.Triangular)
+    if (stor == Storage.triangular)
 {
     auto array = new T[(n*n+n)/2];
     if (init != T.init) array[] = init; // Because of DMD bug #3576 this can't
@@ -102,18 +112,25 @@ unittest
     check (dense2.rows == 4  &&  dense2.cols == 3);
     check (dense2[1,2] == 1.0);
 
-    auto upTri = matrix!(real, Storage.Triangular)(3);
+    auto upTri = matrix!(real, Storage.triangular)(3);
     check (upTri.rows == 3  &&  upTri.cols == 3);
     check (isNaN(upTri[0,2])  &&  upTri[2,0] == 0);
 
-    auto loTri = matrix!(double, Storage.Triangular, Triangle.Lower)(3, 1.0);
+    auto loTri = matrix!(double, Storage.triangular, Triangle.lower)(3, 1.0);
     check (loTri.rows == 3  &&  loTri.cols == 3);
     check (loTri[0,2] == 0  &&  loTri[2,0] == 1.0);
 
 }
 
-
-
+/** Create a diagonal matrix from an array of elements.*/
+MatrixView!(T, Storage.diagonal) diag(T)(T[] diagonalElements) pure nothrow
+{
+    return typeof(return)(
+        diagonalElements,
+        diagonalElements.length,
+        diagonalElements.length
+    );
+}
 
 /** A convenience function that creates a copy of the input matrix. */
 MatrixView!(T, stor, tri) copy(T, Storage stor, Triangle tri)
@@ -136,13 +153,10 @@ unittest
     check (b[1,0] == 2.0  &&  a[1,0] == 1.0);
 }
 
-
-
-
 /** This struct provides a matrix-like view of the contents of an
     array. In order to be compatible with LAPACK routines, it supports
     the following matrix representations (i.e. memory layouts).
-    
+
     General_matrices:
     The elements of dense matrices are stored in column-major order.
     This means that if the wrapped array contains the elements
@@ -185,11 +199,11 @@ unittest
     Hermitian matrices are not implemented yet.
 
     See_also:
-    LAPACK User's Guide: Matrix storage schemes, 
+    LAPACK User's Guide: Matrix storage schemes,
     $(LINK http://www.netlib.org/lapack/lug/node121.html)
 */
-struct MatrixView (T, Storage stor = Storage.General,
-    Triangle tri = Triangle.Upper)
+struct MatrixView (T, Storage stor = Storage.general,
+    Triangle tri = Triangle.upper)
 {
     enum Storage storage = stor;
     enum Triangle triangle = tri;
@@ -199,13 +213,14 @@ private:
     // we introduce a few flags.
     enum : bool
     {
-        isGen   = (storage == Storage.General),
-        isTri   = (storage == Storage.Triangular),
-        isUpTri = (isTri && triangle == Triangle.Upper),
-        isLoTri = (isTri && triangle == Triangle.Lower),
-        isSym   = (storage == Storage.Symmetric),
-        isUpSym = (isSym && triangle == Triangle.Upper),
-        isLoSym = (isSym && triangle == Triangle.Lower),
+        isGen   = (storage == Storage.general),
+        isTri   = (storage == Storage.triangular),
+        isUpTri = (isTri && triangle == Triangle.upper),
+        isLoTri = (isTri && triangle == Triangle.lower),
+        isSym   = (storage == Storage.symmetric),
+        isUpSym = (isSym && triangle == Triangle.upper),
+        isLoSym = (isSym && triangle == Triangle.lower),
+        isDiag  = (storage == Storage.diagonal)
     }
 
 
@@ -216,8 +231,8 @@ private:
            ~"Non-appropriate type given: "~T.stringof);
     }
 
-    // The zero element in triangular matrices.
-    static if (isTri)
+    // The zero element in triangular and diagonal matrices.
+    static if (isTri || isDiag)
     {
         T zero = Zero!T;
     }
@@ -242,7 +257,7 @@ public:
 
 
     /** Wrap a MatrixView with m rows around the given array.
-        
+
         For general matrices, the number of columns in the matrix
         is set to a.length/m, whereas for triangular and symmetric
         matrices the number of columns is set equal to the number
@@ -302,7 +317,7 @@ public:
         ---
         m[1,2] += 3.14;
         ---
-        Unfortunately, it also means that in a triangular matrix one
+        Unfortunately, it also means that in a triangular or diagonal matrix one
         can change the zero element (which is common for all zero elements).
         ---
         assert ((m[1,0] == 0.0)  &&  m[2,0] == 0.0);
@@ -340,15 +355,20 @@ public:
             if (i >= j)  return array.ptr[i + ((rows+rows-j-1)*j)/2];
             else return array.ptr[j + ((rows+rows-i-1)*i)/2];
         }
+        else static if(isDiag)
+        {
+            if(i == j) return array[i];
+            else return zero;
+        }
         else static assert (false);
     }
 
 
     /** Assign a value to the element at row i, column j.
-        
+
         Unlike opIndex(), this method checks that zero elements in
-        a triangular matrix aren't assigned to, but only in non-release
-        builds.
+        a triangular or diagonal matrix aren't assigned to, but only in
+        non-release builds.
     */
     T opIndexAssign(T value, size_t i, size_t j) nothrow
     in
@@ -356,6 +376,7 @@ public:
         assert (i < rows  &&  j < cols);
         static if (isUpTri)  assert (i <= j);
         static if (isLoTri)  assert (i >= j);
+        static if (isDiag) assert(i == j);
     }
     body
     {
@@ -375,8 +396,47 @@ public:
             if (i >= j)  return array.ptr[i + ((rows+rows-j-1)*j)/2] = value;
             else return array.ptr[j + ((rows+rows-i-1)*i)/2] = value;
         }
+        else static if(isDiag)
+        {
+            return array.ptr[i] = value;
+        }
         else static assert (false);
     }
+
+    /**
+    Prints a matrix in the default precision, which is 6 significant
+    figures.
+    */
+    string toString()
+    {
+        return toString(6);
+    }
+
+    /**
+    Prints a matrix using a user-specified number of significant figures.
+    */
+    string toString(uint precision)
+    {
+        auto app = appender!(string)();
+        app.reserve(rows * cols * (precision + 6) + rows);
+        auto formatStr = text('%', precision + 6, '.', precision, 'g');
+
+        // The hard coded 6's are for the exponent, i.e. e-308, plus a space.
+        foreach(i; 0..rows)
+        {
+            foreach(j; 0..cols)
+            {
+                app.put(
+                    format(formatStr, this[i, j])
+                );
+            }
+
+            app.put('\n');
+        }
+
+        return app.data;
+    }
+
 }
 
 unittest
@@ -400,9 +460,9 @@ unittest
     gm2[1,1] = 10; check (gm2[1,1] == 10);
 
 
-    alias MatrixView!(real, Storage.Triangular) UTMatrix;
+    alias MatrixView!(real, Storage.triangular) UTMatrix;
     real[] u = [1.0, 2, 3, 4, 5, 6];
-    
+
     auto um1 = UTMatrix(u, 3);
     check (um1.cols == 3);
     check (um1[1,0] == 0.0);
@@ -411,9 +471,9 @@ unittest
     um1[2,2] = 10; check (u[5] == 10);
 
 
-    alias MatrixView!(real, Storage.Triangular, Triangle.Lower) LTMatrix;
+    alias MatrixView!(real, Storage.triangular, Triangle.lower) LTMatrix;
     real[] l = [1.0, 2, 3, 4, 5, 6];
-    
+
     auto lm1 = LTMatrix(l, 3);
     check (lm1.cols == 3);
     check (lm1[0,1] == 0.0);
@@ -422,9 +482,9 @@ unittest
     lm1[2,2] = 10; check (l[5] == 10);
 
 
-    alias MatrixView!(real, Storage.Symmetric) USMatrix;
+    alias MatrixView!(real, Storage.symmetric) USMatrix;
     real[] us = [1.0, 2, 3, 4, 5, 6];
-    
+
     auto usm1 = USMatrix(us, 3);
     check (usm1.cols == 3);
     check (usm1[1,2] == 5.0);
@@ -435,9 +495,9 @@ unittest
     usm1[1,2] = 10; check (usm1[2,1] == 10);
 
 
-    alias MatrixView!(real, Storage.Symmetric, Triangle.Lower) LSMatrix;
+    alias MatrixView!(real, Storage.symmetric, Triangle.lower) LSMatrix;
     real[] ls = [1.0, 2, 3, 4, 5, 6];
-    
+
     auto lsm1 = LSMatrix(ls, 3);
     check (lsm1.cols == 3);
     check (lsm1[1,2] == 5.0);
@@ -446,10 +506,14 @@ unittest
             check (lsm1[i,j] == lsm1[j,i]);
     lsm1[0,2] += 3; check (lsm1[2,0] == 6);
     lsm1[1,2] = 10; check (lsm1[2,1] == 10);
+
+    real[] diags = [1.0, 2, 3, 4, 5, 6];
+    auto dmat = diag(diags);
+    check(dmat.rows == 6);
+    check(dmat.cols == 6);
+    check(dmat[0, 2] == 0);
+    check(dmat[1, 1] == 2);
 }
-
-
-
 
 /** Evaluates to true if the given type is an instantiation of
     MatrixView. Optionally test the element type and/or storage
@@ -501,11 +565,11 @@ template isMatrixView(MatrixT, Storage stor)
 version(unittest)
 {
     static assert (isMatrixView!(
-        MatrixView!(int, Storage.Triangular),
-        Storage.Triangular));
+        MatrixView!(int, Storage.triangular),
+        Storage.triangular));
     static assert (!isMatrixView!(
-        MatrixView!(int, Storage.Triangular),
-        Storage.Symmetric));
+        MatrixView!(int, Storage.triangular),
+        Storage.symmetric));
 }
 
 
@@ -522,14 +586,135 @@ template isMatrixView(MatrixT, ElemT, Storage stor)
 version(unittest)
 {
     static assert (isMatrixView!(
-        MatrixView!(int, Storage.Triangular),
-        int, Storage.Triangular));
+        MatrixView!(int, Storage.triangular),
+        int, Storage.triangular));
     static assert (!isMatrixView!(
-        MatrixView!(int, Storage.Triangular),
-        float, Storage.Triangular));
+        MatrixView!(int, Storage.triangular),
+        float, Storage.triangular));
     static assert (!isMatrixView!(
-        MatrixView!(int, Storage.Triangular),
-        int, Storage.Symmetric));
+        MatrixView!(int, Storage.triangular),
+        int, Storage.symmetric));
 }
 
+template MatrixType(M)
+if(isMatrixView!M)
+{
+    alias typeof(M.init.array[0]) MatrixType;
+}
+
+unittest
+{
+    static assert(is(MatrixType!(MatrixView!double) == double));
+}
+
+template CommonMatrix(M...)
+{
+    alias CommonMatrixImpl!(M).ret CommonMatrix;
+}
+
+private template CommonMatrixImpl(M...)
+{
+    alias CommonType!(
+        typeof(M[0].init.array[0]),
+        typeof(M[1].init.array[0])
+    ) E;
+
+    static if(M.length == 1)
+    {
+        alias M ret;
+    }
+    else static if(M.length == 2)
+    {
+
+        static if(M[0].storage == Storage.diagonal && M[1].storage ==
+        Storage.diagonal)
+        {
+            alias MatrixView!(E, Storage.diagonal) ret;
+        }
+        else static if(M[0].storage == Storage.triangular
+        && M[1].storage == Storage.diagonal)
+        {
+            alias MatrixView!(E, Storage.triangular, M[0].triangle) ret;
+        }
+        else static if(M[1].storage == Storage.triangular
+        && M[0].storage == Storage.diagonal)
+        {
+            alias MatrixView!(E, Storage.triangular, M[1].triangle) ret;
+        }
+        else static if(M[0].storage == Storage.triangular
+        && M[1].storage == Storage.triangular && M[0].triangle == M[1].triangle)
+        {
+            alias MatrixView!(E, Storage.triangular, M[1].triangle) ret;
+        }
+        else
+        {
+            alias MatrixView!(E, Storage.general) ret;
+        }
+    }
+    else
+    {
+        alias CommonMatrix!(
+            CommonMatrix!(M[0], M[1]), M[2..$]
+        ) ret;
+    }
+}
+
+unittest
+{
+    static assert(is(CommonMatrix!(
+        MatrixView!(double, Storage.diagonal),
+        MatrixView!(float, Storage.diagonal)) ==
+        MatrixView!(double, Storage.diagonal)
+    ));
+
+    static assert(is(CommonMatrix!(
+        MatrixView!(ubyte, Storage.general),
+        MatrixView!(float, Storage.diagonal)) ==
+        MatrixView!(float, Storage.general)
+    ));
+
+    static assert(is(CommonMatrix!(
+        MatrixView!(double, Storage.triangular, Triangle.upper),
+        MatrixView!(float, Storage.triangular, Triangle.lower)) ==
+        MatrixView!(double, Storage.general)
+    ));
+
+    static assert(is(CommonMatrix!(
+        MatrixView!(double, Storage.triangular, Triangle.upper),
+        MatrixView!(float, Storage.triangular, Triangle.upper)) ==
+        MatrixView!(double, Storage.triangular, Triangle.upper)
+    ));
+}
+
+template allSameStorage(M...)
+{
+    static if(M.length == 1)
+    {
+        enum bool allSameStorage = true;
+    }
+    else static if(M.length == 2)
+    {
+        static if(M[0].storage != M[1].storage)
+        {
+            enum bool allSameStorage = false;
+        }
+        else static if(M[0].storage != Storage.triangular)
+        {
+            enum bool allSameStorage = true;
+        }
+        else static if(M[0].triangle == M[1].triangle)
+        {
+            enum bool allSameStorage = true;
+        }
+        else
+        {
+            enum bool allSameStorage = false;
+        }
+    }
+    else
+    {
+        enum bool allSameStorage = allSameStorage(M[0], M[1]) &&
+            allSameStorage(M[1..$]);
+    }
+}
 

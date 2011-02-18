@@ -48,6 +48,8 @@ import scid.exception;
 import scid.matrix;
 import scid.util;
 
+import core.memory;
+
 pragma(lib, "blas");
 pragma(lib, "lapack");
 
@@ -328,7 +330,7 @@ body
         auto ipiv = newStack!int(m.rows);
         getrf(m.rows, m.cols, m.array.ptr, m.rows, ipiv.ptr, info);
         assert (info >= 0, "invalid input to getrf");
-        
+
         // If matrix is singular, determinant is zero.
         if (info > 0)  return Zero!DT;
 
@@ -351,7 +353,7 @@ body
         auto ipiv = newStack!int(m.rows);
         sptrf(m.triangle, m.rows, m.array.ptr, ipiv.ptr, info);
         assert (info >= 0, "invalid input to sptrf");
-        
+
         // If matrix is singular, determinant is zero.
         if (info > 0)  return Zero!DT;
 
@@ -871,7 +873,65 @@ unittest
     double[] aa = new double[9];
     foreach (i, ref e; aa)  e = i;
     auto a = MatrixView!double(aa, 3, 3);
-    
+
     try { invert(a); check(false, "Matrix should be detected as singular"); }
     catch (Exception e) { check (true); }
+}
+
+struct SvdResult(T) {
+    T[] sigma;
+    MatrixView!(T, Storage.General) u;
+    MatrixView!(T, Storage.General) vt;
+}
+
+SvdResult!T svd_(T)(MatrixView!(T) mat)
+{
+    mixin(newFrame);
+
+    static assert (isFortranType!T,
+        "svd: Not a FORTRAN-compatible type: "~T.stringof);
+
+    int info;
+    uint m = mat.rows;
+    uint n = mat.cols;
+
+    int lwork = to!int(
+        3 * min(m, n) + max(
+            max(m, n), 5 * min(m, n) * min(m, n) + 4 * min(m, n)
+        )
+    );
+
+    uint uvLen = min(m, n) ^^ 2;
+    T* uvt = cast(T*) GC.malloc(T.sizeof * min(m, n) ^^ 2, GC.BlkAttr.NO_SCAN);
+    T* u, vt;
+    if(m < n)
+    {
+        u = uvt;
+    }
+    else
+    {
+        vt = uvt;
+    }
+
+    auto s = new T[min(m, n)];
+    auto iwork = newStack!int(8 * min(m, n));
+    auto work = newStack!T(lwork);
+
+    gesdd('O', m, n, mat.array.ptr, mat.leading, s.ptr, u, m,
+        vt, n, work.ptr, lwork, iwork.ptr, info);
+
+    typeof(return) ret;
+    ret.sigma = s;
+    if(m < n)
+    {
+        ret.u = MatrixView!(T, Storage.General)(u[0..uvLen], m, m);
+        ret.vt = mat;
+    }
+    else
+    {
+        ret.u = mat;
+        ret.vt = MatrixView!(T, Storage.General)(vt[0..uvLen], n, n);
+    }
+
+    return ret;
 }
