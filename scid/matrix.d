@@ -10,12 +10,15 @@ module scid.matrix;
 
 private import std.conv;
 import std.array : appender;  // For toString
+import std.exception;
 import std.string: format, repeat;
 import std.traits;
 import std.typetuple;
 
 import scid.core.meta;
 import scid.core.traits;
+
+import scid.matrixops;
 
 version(unittest) {
     import scid.core.testing;
@@ -100,6 +103,33 @@ MatrixView!(T, stor, tri) matrix
     if (init != T.init) array[] = init; // Because of DMD bug #3576 this can't
                                         // be done with a function overload.
     return typeof(return)(array, n);
+}
+
+/**
+Convenience function for matrix literals or creating a matrix from an array
+of arrays.
+*/
+MatrixView!(T) matrix(T)(const T[][] arrayOfArrays)
+{
+    typeof(return) ret;
+    alias arrayOfArrays aa;  // Save typing.
+    if(aa.length == 0) return ret;
+
+    ret.array.length = aa.length * aa[0].length;
+    ret.rows = aa.length;
+    ret.cols = aa[0].length;
+
+    foreach(i, row; aa)
+    {
+        enforce(row.length == ret.cols,
+            "Cannot create a matrix from a jagged array of arrays.");
+
+        foreach(j, elem; row) {
+            ret[i, j] = elem;
+        }
+    }
+
+    return ret;
 }
 
 unittest
@@ -437,6 +467,48 @@ public:
         return app.data;
     }
 
+    /**
+    Generates an expression template for adding or subtracting rhs to/from this.
+    rhs must have the same dimensions, but need not have the same storage.
+
+    For details on expression templates, see scid.matrixops.AddSubExpr.
+    */
+    auto opBinary(string op, M)(M rhs)
+    if(isMatrixView!M && (op == "+" || op == "-"))
+    {
+        auto lhsWithSign = plusMinusMatrix!('+')(this);
+        auto rhsWithSign = plusMinusMatrix!(op[0])(rhs);
+
+        AddSubExpr!(typeof(lhsWithSign), typeof(rhsWithSign)) ret;
+        ret.matrices[0] = lhsWithSign;
+        ret.matrices[1] = rhsWithSign;
+        return ret;
+    }
+
+    /**
+    Test two matrices for equality.  They need not have the exact same type
+    or same storage.
+    */
+    bool opEquals(M)(const M rhs) const
+    if(isMatrixView!M)
+    {
+        static if(rhs.storage == this.storage)
+        {
+            return rows == rhs.rows && cols == rhs.cols && array == rhs.array;
+        }
+        else
+        {
+            static assert(0,
+                "Equality testing with different storage not implemented yet.");
+        }
+    }
+
+    /// ditto
+    bool opEquals(Templ)(Templ exprTempl) const
+    if(is(typeof(exprTempl.evaluate())))
+    {
+        return opEquals(exprTempl.evaluate());
+    }
 }
 
 unittest
@@ -686,35 +758,30 @@ unittest
     ));
 }
 
-template allSameStorage(M...)
+// CTFE function.
+bool allSameStorage(M...)()
 {
-    static if(M.length == 1)
-    {
-        enum bool allSameStorage = true;
-    }
-    else static if(M.length == 2)
+    if(M.length < 2) return true;
+
+    foreach(i, m; M[0..$ - 1])
     {
         static if(M[0].storage != M[1].storage)
         {
-            enum bool allSameStorage = false;
+            return false;
         }
         else static if(M[0].storage != Storage.triangular)
         {
-            enum bool allSameStorage = true;
+            continue;
         }
         else static if(M[0].triangle == M[1].triangle)
         {
-            enum bool allSameStorage = true;
+            continue;
         }
         else
         {
-            enum bool allSameStorage = false;
+            return false;
         }
     }
-    else
-    {
-        enum bool allSameStorage = allSameStorage(M[0], M[1]) &&
-            allSameStorage(M[1..$]);
-    }
-}
 
+    return true;
+}
