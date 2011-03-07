@@ -238,6 +238,9 @@ struct MatrixView (T, Storage stor = Storage.general,
     enum Storage storage = stor;
     enum Triangle triangle = tri;
 
+    /// false.
+    enum isTransposed = false;
+
 private:
     // Writing fully-qualified names in static ifs gets tiresome, so
     // we introduce a few flags.
@@ -433,6 +436,11 @@ public:
         else static assert (false);
     }
 
+    ///
+    Transposed!(typeof(this)) transpose() {
+        return typeof(return)(this);
+    }
+
     /**
     Prints a matrix in the default precision, which is 6 significant
     figures.
@@ -474,15 +482,9 @@ public:
     For details on expression templates, see scid.matrixops.AddSubExpr.
     */
     auto opBinary(string op, M)(M rhs)
-    if(isMatrixView!M && (op == "+" || op == "-"))
+    if((isMatrixView!M || isTransposed!M) && (op == "+" || op == "-"))
     {
-        auto lhsWithSign = plusMinusMatrix!('+')(this);
-        auto rhsWithSign = plusMinusMatrix!(op[0])(rhs);
-
-        AddSubExpr!(typeof(lhsWithSign), typeof(rhsWithSign)) ret;
-        ret.matrices[0] = lhsWithSign;
-        ret.matrices[1] = rhsWithSign;
-        return ret;
+        return binaryImpl!op(this, rhs);
     }
 
     /**
@@ -679,6 +681,87 @@ unittest
     static assert(is(MatrixType!(MatrixView!double) == double));
 }
 
+/**
+Holds a transposed matrix, i.e. the columns become the rows and the rows
+become the columns.
+*/
+struct Transposed(Matrix)
+if(isMatrixView!Matrix)
+{
+    // For convenience/typing saving
+    enum Storage storage = matrix.storage;
+    enum Triangle triangle = matrix.triangle;
+
+    /// The type of the contents of Matrix.
+    alias typeof(matrix[0, 0]) E;
+
+    /// true
+    enum bool isTransposed = true;
+
+    /// The underlying matrix.
+    Matrix matrix;
+
+    /// Returns matrix.cols
+    size_t rows() @property
+    {
+        return matrix.cols;
+    }
+
+    /// Returns matrix.rows
+    size_t cols() @property
+    {
+        return matrix.rows;
+    }
+
+    ///
+    ref E opIndex(size_t i, size_t j)
+    {
+        return matrix[j, i];
+    }
+
+    ///
+    E opIndexAssign(E val, size_t i, size_t j)
+    {
+        return matrix[j, i] = E;
+    }
+
+    ///
+    auto opBinary(string op, M)(M rhs)
+    if((isMatrixView!M || isTransposed!M) && (op == "+" || op == "-"))
+    {
+        return binaryImpl!op(this, rhs);
+    }
+
+    ///
+    Matrix transpose() {
+        return matrix;
+    }
+}
+
+private auto binaryImpl(string op, M1, M2)(M1 lhs, M2 rhs)
+if(op == "+" || op == "-")
+{
+    auto lhsWithSign = plusMinusMatrix!('+')(lhs);
+    auto rhsWithSign = plusMinusMatrix!(op[0])(rhs);
+
+    AddSubExpr!(typeof(lhsWithSign), typeof(rhsWithSign)) ret;
+    ret.matrices[0] = lhsWithSign;
+    ret.matrices[1] = rhsWithSign;
+    return ret;
+}
+
+template Transposed(T)
+if(isTransposed!T)
+{
+    alias typeof(typeof(T.init.matrix)) Transposed;
+}
+
+template isTransposed(M)
+{
+    // Just look at the duck interface.
+    enum bool isTransposed = is(typeof(M.isTransposed)) && M.isTransposed;
+}
+
 template CommonMatrix(M...)
 {
     alias CommonMatrixImpl!(M).ret CommonMatrix;
@@ -781,6 +864,17 @@ bool allSameStorage(M...)()
         {
             return false;
         }
+    }
+
+    return true;
+}
+
+// CTFE function
+bool noneTransposed(M...)()
+{
+    foreach(m; M)
+    {
+        if(m.isTransposed) return false;
     }
 
     return true;

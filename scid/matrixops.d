@@ -91,7 +91,7 @@ if(allSatisfy!(isPlusMinusMatrix, M))
 
     ResultType evaluateImpl()
     {
-        static if(allSameStorage!(M)())
+        static if(allSameStorage!(M)() && noneTransposed!(M)())
         {
             result.rows = matrices[0].rows;
             result.cols = matrices[0].cols;
@@ -116,6 +116,8 @@ if(allSatisfy!(isPlusMinusMatrix, M))
         }
         else
         {
+            // Add diagonals first, then lower triangle if necessary, then
+            // upper triangle if necessary.
             static assert(0, "Matrix addition/subtraction with heterogeneous "
                 ~ " storage not implemented yet.");
         }
@@ -138,14 +140,14 @@ if(allSatisfy!(isPlusMinusMatrix, M))
     alias evaluate this;
 
     auto opBinary(string op, M2)(M2 rhs)
-    if(isMatrixView!M2 && (op == "+" || op == "-"))
+    if((isMatrixView!M2 || isTransposed!M2)  && (op == "+" || op == "-"))
     {
         auto rhsWithSign = plusMinusMatrix!(op[0])(rhs);
         return AddSubExpr!(M, typeof(rhsWithSign))(matrices, rhsWithSign);
     }
 
     auto opBinaryRight(string op, M2)(M2 lhs)
-    if(isMatrixView!M2 && (op == "+" || op == "-"))
+    if((isMatrixView!M2 || isTransposed!M2) && (op == "+" || op == "-"))
     {
         auto lhsWithSign = plusMinusMatrix!('+')(lhs);
         alias typeof(negate().matrices) NegateType;
