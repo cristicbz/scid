@@ -482,7 +482,7 @@ public:
     For details on expression templates, see scid.matrixops.AddSubExpr.
     */
     auto opBinary(string op, M)(M rhs)
-    if((isMatrixView!M || isTransposed!M) && (op == "+" || op == "-"))
+    if((isMatrixView!M || M.isTransposed) && (op == "+" || op == "-"))
     {
         return binaryImpl!op(this, rhs);
     }
@@ -686,7 +686,6 @@ Holds a transposed matrix, i.e. the columns become the rows and the rows
 become the columns.
 */
 struct Transposed(Matrix)
-if(isMatrixView!Matrix)
 {
     // For convenience/typing saving
     enum Storage storage = matrix.storage;
@@ -722,7 +721,7 @@ if(isMatrixView!Matrix)
     ///
     E opIndexAssign(E val, size_t i, size_t j)
     {
-        return matrix[j, i] = E;
+        return matrix[j, i] = val;
     }
 
     ///
@@ -736,6 +735,16 @@ if(isMatrixView!Matrix)
     Matrix transpose() {
         return matrix;
     }
+}
+
+/**
+Test whether a matrix or transpose is square, i.e. whether it has the
+same number of rows and columns.
+*/
+bool isSquare(M)(M matrix)
+if(isMatrix!M || isTransposed!M)
+{
+    return matrix.rows == matrix.cols;
 }
 
 private auto binaryImpl(string op, M1, M2)(M1 lhs, M2 rhs)
@@ -878,4 +887,16 @@ bool noneTransposed(M...)()
     }
 
     return true;
+}
+
+// CTFE function
+uint nTransposed(M...)() {
+    uint ret = 0;
+
+    foreach(m; M)
+    {
+        if(m.isTransposed) ret++;
+    }
+
+    return ret;
 }
