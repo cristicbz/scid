@@ -7,7 +7,7 @@
   * License: Boost License 1.0
   */
 
-module scid.spline;
+module scid.spline_a;
 
 // Common binary search in a sorted array
 // TODO: Does phobos already have such function?
