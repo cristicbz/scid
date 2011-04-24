@@ -11,6 +11,8 @@ module scid.interpolation;
 // TODO: add more embedded documentation
 // FIXME: add "in" and "out" qualifiers for function arguments
 
+import std.math;
+
 /** Determines which arras should be duplicated and stored in the spline
   * structue.
   */
@@ -27,9 +29,9 @@ enum SplineOptim
     // No, no, no! David Blaine! We don't need your magic!
     normal, /// no special features
     // Use the Force, Luke!
-    fixVar, /** accelerate multiple calculations with the same
-              * variable value array
-              */
+    fixVar /** accelerate multiple calculations with the same
+             * variable value array
+             */
 }
 
 /** Common functions for univariate splines
@@ -379,9 +381,12 @@ struct SplineLinear(Tvar, Tfunc,
 /* -------------------------------------------------------------------------- */
 
 /** Cubic one-dimensional spline (order = 3, defect = 1).
+  *
   * Params:
   *     Tfunc = type of function
   *     Tvar = type of variable
+  *     storage = spline storage type (none by default)
+  *     optim = spline optimization type (normal by default)
   */
 struct SplineCubic(Tvar, Tfunc,
                    SplineOptim optim = SplineOptim.normal,
@@ -448,6 +453,7 @@ struct SplineCubic(Tvar, Tfunc,
         static if(optim == SplineOptim.fixVar)
         {
             // TODO: implement this area when the algorithm will be tested
+            static assert(false, "No implementation for fixVar mode");
 
             bool _needUpdateVar;
 
@@ -670,7 +676,7 @@ struct SplineCubic(Tvar, Tfunc,
     // Boundary conditions
     public
     {
-        /// BC types
+        /// Boundary conditons (BC) types
         enum BoundCond
         {
             /** Periodic spline. BC values are ignored.
@@ -692,6 +698,7 @@ struct SplineCubic(Tvar, Tfunc,
                 _bcRightType = BoundCond.periodic;
         }
 
+        /// Type of BC on the left side
         BoundCond bcLeftType()
         {
             return _bcLeftType;
@@ -704,6 +711,7 @@ struct SplineCubic(Tvar, Tfunc,
             _bcLeftVal = val;
         }
 
+        /// Value of BC on the left side
         Tfunc bcLeftVal()
         {
             return _bcLeftVal;
@@ -718,6 +726,7 @@ struct SplineCubic(Tvar, Tfunc,
                 _bcLeftType = BoundCond.periodic;
         }
 
+        /// Type of BC on the right side
         BoundCond bcRightType()
         {
             return _bcRightType;
@@ -730,6 +739,7 @@ struct SplineCubic(Tvar, Tfunc,
             _bcRightVal = val;
         }
 
+        /// Value of BC on the right side
         Tfunc bcRightVal()
         {
             return _bcRightVal;
@@ -775,7 +785,168 @@ struct SplineCubic(Tvar, Tfunc,
 
 /* -------------------------------------------------------------------------- */
 
-// TODO: 1d Akima spline
+/** One-dimensional Akima interpolation.
+  *
+  * Params:
+  *     Tfunc = type of function
+  *     Tvar = type of variable
+  *     storage = spline storage type (none by default)
+  *     optim = spline optimization type (normal by default)
+  */
+struct SplineAkima(Tvar, Tfunc,
+                   SplineOptim optim = SplineOptim.normal,
+                   SplineStorage storage = SplineStorage.none)
+{
+    // TODO: Add different boundary conditions
+    // TODO: Add a mechanism for adding points to the curve
+
+    mixin splineBase!(Tvar, Tfunc, storage);
+
+    // Data and workspaces
+    private
+    {
+        // Spline parameters:
+        Tfunc[] _c1;
+        Tfunc[] _c2;
+        Tfunc[] _c3;
+        /* The interpolant is:
+         *     f(x) = _f[i] + _c1[i] * dx + _c2[i] * dx*dx + _c3[i] * dx*dx*dx
+         *     dx = x - _x[i]
+         */
+
+        void _allocContents(size_t maxSize) // TODO: use scid.core.memory
+        {
+            static if(storage != SplineStorage.none)
+            {
+                _bufx.length = maxSize;
+                static if(storage == SplineStorage.all)
+                {
+                    _buff.length = maxSize;
+                }
+            }
+            _c1.length = maxSize;
+            _c2.length = maxSize - 1;
+            _c3.length = maxSize - 1;
+
+            static if(optim == SplineOptim.fixVar)
+            {
+                // FIXME: implement after testing of the algorithm
+            }
+            _maxSize = maxSize;
+        }
+    }
+
+    // Numereical core
+    private
+    {
+        static if(optim == SplineOptim.fixVar)
+        {
+            // TODO: implement this area when the algorithm will be tested
+            static assert(false, "No implementation for fixVar mode");
+
+            bool _needUpdateVar;
+
+            /* Data depending only on variable values */
+            // FIXME: implement after testing of the algorithm
+
+            void _calcVarDependent()
+            {
+                // FIXME: implement after testing of the algorithm
+            }
+
+            void _calcFuncDependent()
+            {
+                // FIXME: implement after testing of the algorithm
+            }
+        }
+        else
+        {
+            void _calcAll()
+            {
+                /* TODO: After testing, reduce the number of workspaces by using
+                 *       the coefficient arrays as workspaces.
+                 */
+                // FIXME: this code suits only for real numbers
+                size_t N = _x.length - 1;
+                Tfunc[] d = new Tfunc[N + 2];
+                Tfunc[] w = new Tfunc[N + 3];
+                // Calculate slopes and weights
+                for(size_t i = 1; i <= N; ++i)
+                    d[i] = (_f[i] - _f[i - 1]) / (_x[i] - _x[i - 1]);
+                d[0] = 2 * d[1] - d[2];
+                d[N + 1] = 2 * d[N] - d[N - 1];
+                for(size_t i = 1; i <= N + 1; ++i)
+                    w[i] = abs(d[i] - d[i - 1]); // FIXME: real only
+                w[0] = w[1];
+                w[N + 2] = w[N + 1];
+                for(size_t i = 0; i <= N; ++i)
+                    if(w[i] + w[i + 2] > 0)
+                        _c1[i] = (w[i] * d[i] + w[i + 2] * d[i + 1])
+                                 / (w[i] + w[i + 2]);
+                    else
+                        _c1[i] = (d[i] + d[i + 2]) / 2;
+                // Calculate the remaining coefficients
+                for(size_t i = 0; i < N; ++i)
+                {
+                    Tvar h = _x[i + 1] - _x[i];
+                    Tvar v = _f[i + 1] - _f[i];
+                    _c2[i] = (3 * v - h * (2 * _c1[i] + _c1[i + 1]))
+                             / (h * h);
+                    _c3[i] = (-2 * v + h * (_c1[i] + _c1[i + 1]))
+                             / (h * h * h);
+                }
+            }
+        }
+    }
+
+    // Function evaluation code
+    private
+    {
+        Tfunc _calcFunction(Tvar x, size_t index)
+        {
+            double dx = x - _x[index];
+            return _f[index] + dx * (_c1[index]
+                                     + dx * (_c2[index] + dx * _c3[index]));
+        }
+
+        // Calculate first derivative in a given interval
+        Tfunc _calcDeriv(Tvar x, size_t index)
+        {
+            double dx = x - _x[index];
+            return _c1[index] + dx * (2 * _c2[index] + dx * 3 * _c3[index]);
+        }
+    }
+
+    public
+    {
+        /// Minimal number of points needed for the spline
+        enum size_t minPoints = 3;
+
+        /** Reserve memory for the spline.
+          */
+        this(size_t maxSize)
+        {
+            _allocContents(maxSize);
+        }
+
+        /** Create spline for given variable and function value arrays.
+          *
+          * Params:
+          *     x = variable value array
+          *     y = function value array
+          *     calcNow = whether to calculate the spline immediately
+          *               (true by default)
+          */
+        this(Tvar[] x, Tfunc[] y, bool calcNow = true)
+        {
+            this(x.length);
+            setAll(x, y);
+        }
+    }
+} // TODO: unittest
+
+/* -------------------------------------------------------------------------- */
+
 // TODO: 1d B-spline
 // TODO: non-spline interpolators
 // TODO: 2d bilinear interpolation
