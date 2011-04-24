@@ -258,8 +258,8 @@ struct SplineView(Tspline)
 /** Linear one-dimensional spline (order = 1, defect = 1).
   *
   * Params:
-  *     Tfunc = type of function
   *     Tvar = type of variable
+  *     Tfunc = type of function
   *     storage = spline storage type (none by default)
   *     optim = spline optimization type (normal by default)
   */
@@ -383,8 +383,8 @@ struct SplineLinear(Tvar, Tfunc,
 /** Cubic one-dimensional spline (order = 3, defect = 1).
   *
   * Params:
-  *     Tfunc = type of function
   *     Tvar = type of variable
+  *     Tfunc = type of function
   *     storage = spline storage type (none by default)
   *     optim = spline optimization type (normal by default)
   */
@@ -788,17 +788,29 @@ struct SplineCubic(Tvar, Tfunc,
 /** One-dimensional Akima interpolation.
   *
   * Params:
-  *     Tfunc = type of function
   *     Tvar = type of variable
+  *     Tfunc = type of function
   *     storage = spline storage type (none by default)
   *     optim = spline optimization type (normal by default)
+  *     Props = strings, describing properties of Tfunc type to process.
+  *             It is necessary because for this kind of splines not only
+  *             linear operations are performed with function values.
+  *
+  * Examples:
+  * ----------
+  * alias SplineAkima!(double, Complex!(double),
+  *                    SplineOptim.normal, SplineStorage.none,
+  *                    ".re", ".im") MySpline;
+  * ----------
   */
 struct SplineAkima(Tvar, Tfunc,
                    SplineOptim optim = SplineOptim.normal,
-                   SplineStorage storage = SplineStorage.none)
+                   SplineStorage storage = SplineStorage.none,
+                   Props...)
 {
     // TODO: Add different boundary conditions
     // TODO: Add a mechanism for adding points to the curve
+    // TODO: Implement support of compound types
 
     mixin splineBase!(Tvar, Tfunc, storage);
 
@@ -839,6 +851,82 @@ struct SplineAkima(Tvar, Tfunc,
     // Numereical core
     private
     {
+        // Some templates for compound types
+        private
+        {
+            string codeWeight(string w, string dl, string dr, Props...)()
+            {
+                string result = "";
+                foreach(p; Props)
+                {
+                    static assert(is(typeof(p) == string),
+                                  "Properties should be strings");
+                    result ~= w ~ p ~
+                              " = abs(" ~
+                                  dl ~ p
+                                  ~ " - " ~
+                                  dr ~ p
+                              ~ ");\n";
+                }
+                return result;
+            }
+
+            string codeCoeff1(string t, string wl, string wr,
+                              string dl, string dr,
+                              Props...)()
+            {
+                string result = "";
+                foreach(p; Props)
+                {
+                    static assert(is(typeof(p) == string),
+                                  "Properties should be strings");
+                    /* Some template magic:
+                     * ----------
+                     * if((wl.p + wr.p) > 0)
+                     *     t.p = (wl.p * d.p + wr.p * d.p) / (wl.p + wr.p);
+                     * else
+                     *     t.p = (dl.p + d.p) / 2;
+                     * ----------
+                     */
+                    result ~= "if(" ~
+                                  "(" ~
+                                      wl ~ p
+                                      ~ " + " ~
+                                      wr ~ p
+                                  ~ ")"
+                                  ~ " > 0"
+                              ~ ")\n    " ~
+                                  t ~ p ~ " = " ~
+                                  "(" ~
+                                      wl ~ p
+                                      ~ " * " ~
+                                      dl ~ p
+                                      ~
+                                      " + "
+                                      ~
+                                      wr ~ p
+                                      ~ " * " ~
+                                      dr ~ p
+                                  ~ ")"
+                                  ~ " / " ~
+                                  "(" ~
+                                      wl ~ p
+                                      ~ " + " ~
+                                      wr ~ p
+                                  ~ ");\n"
+                              ~ "else\n    " ~
+                                  t ~ p ~ " = " ~
+                                  "(" ~
+                                      dl ~ p
+                                      ~ " + " ~
+                                      dr ~ p
+                                  ~ ")" ~
+                                  " / 2;\n";
+                }
+                return result;
+            }
+        }
+
         static if(optim == SplineOptim.fixVar)
         {
             // TODO: implement this area when the algorithm will be tested
@@ -863,10 +951,9 @@ struct SplineAkima(Tvar, Tfunc,
         {
             void _calcAll()
             {
-                /* TODO: After testing, reduce the number of workspaces by using
-                 *       the coefficient arrays as workspaces.
+                /* TODO: After testing, refuse the workspaces by using
+                 *       the coefficient arrays instead.
                  */
-                // FIXME: this code suits only for real numbers
                 size_t N = _x.length - 1;
                 Tfunc[] d = new Tfunc[N + 2];
                 Tfunc[] w = new Tfunc[N + 3];
