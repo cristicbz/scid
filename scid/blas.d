@@ -54,11 +54,12 @@ struct blas {
 			writeln( stridedToString(x, n, incx) );
 	}
 	
-	static void copy( T )( size_t n, const(T)* x, size_t incx, T* y, size_t incy ) {
+	static void copy( T, U )( size_t n, const(T)* x, size_t incx, U* y, size_t incy ) 
+	if( isConvertible!( T, U ) ) {
 		debug( blasCalls )
 			write( "copy( ", stridedToString(x, n, incx), ", ", stridedToString(y, n, incy), " ) => " );
 		
-		static if( isFortranType!T && !forceNaive )
+		static if( isFortranType!T && is( Unqual!T == Unqual!U ) && !forceNaive )
 			blas_.copy( toi(n), x, toi(incx), y, toi(incy) );
 		else
 			naive_.copy( n, x, incx, y, incy );
@@ -252,7 +253,8 @@ struct blas {
 	// B := A    or
 	// B := A.T  or
 	// B := A.H, for A and B mxn matrices
-	static void xgecopy( char transA, T )( size_t m, size_t n, const(T)* a, size_t lda, T* b, size_t ldb ) {
+	static void xgecopy( char transA, T, U )( size_t m, size_t n, const(T)* a, size_t lda, U* b, size_t ldb ) 
+	if( isConvertible!( T, U ) ) {
 		debug( blasCalls ) {
 			writeln();
 			writeln( "xgecopy( ", matrixToString(transA,m,n,a,lda), ", ", matrixToString('N',m,n,a,ldb), " ) => ..." );
@@ -365,7 +367,7 @@ private struct naive_ {
 		}
 	}
 	
-	static void copy( T )( size_t n, const(T)* x, size_t incx, T* y, size_t incy ) {
+	static void copy( T , U )( size_t n, const(T)* x, size_t incx, U* y, size_t incy ) {
 		debug( blasCalls ) reportNaive_();
 		
 		if( !n )
@@ -374,16 +376,19 @@ private struct naive_ {
 		assert( checkVector( x, incx ) );
 		assert( checkVector( y, incy ) );
 		
-		if( incx == 1 && incy == 1 )
-			y[ 0 .. n ] = x[ 0 .. n ];
-		else {
-			n *= incx;
-			auto xe = x + n;
-			while( x != xe ) {
-				*y = *x;
-				x += incx; y += incy;
-			}
+		static if( is( Unqual!T == Unqual!U ) ) {
+            if( incx == 1 && incy == 1 ) {
+                y[ 0 .. n ] = x[ 0 .. n ];
+                return;
+            }
 		}
+                
+        n *= incx;
+        auto xe = x + n;
+        while( x != xe ) {
+            *y = *x;
+            x += incx; y += incy;
+        }
 	}
 	
 	static void axpy( T )( size_t n, T alpha, const(T)* x, size_t incx, T* y, size_t incy ) {
@@ -681,7 +686,8 @@ private struct naive_ {
 	}
 	
 	// y := x.H
-	static void xcopyc( T )( size_t n, const(T)* x, size_t incx, T* y, size_t incy ) if( isComplexScalar!T ) {
+	static void xcopyc( T, U )( size_t n, const(T)* x, size_t incx, U* y, size_t incy ) 
+	if( isComplexScalar!T && isComplexScalar!U ) {
 		debug( blasCalls ) reportNaive_();
 		
 		if( !n )
@@ -737,7 +743,10 @@ private struct naive_ {
 	// B := A    or
 	// B := A.T  or
 	// B := A.H    , for A and B mxn matrices
-	static void xgecopy( char transA_, bool forceConjugate=false, T )( size_t m, size_t n, const(T)* a, size_t lda, T* b, size_t ldb ) if( isComplexScalar!T || !forceConjugate ) {
+	static void xgecopy( char transA_, bool forceConjugate=false, T, U )
+	( size_t m, size_t n, const(T)* a, size_t lda, U* b, size_t ldb ) 
+	if( ( isComplexScalar!T && isComplexScalar!U ) || !forceConjugate &&
+    isConvertible!( T, U ) ) {
 		//debug( blasCalls ) reportNaive_();
 		
 		enum transA = cast(char)toUpper( transA_ );
