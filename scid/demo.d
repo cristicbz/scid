@@ -345,6 +345,17 @@ version( demo ) {
 	}
 	
 	void main() {
-		opTest();
+		auto a = Matrix!double( [[1,2,3],[3,4,5]] );
+		auto b = Matrix!double( [[5,6],[7,8],[9,10]] );
+		Matrix!(double, StorageOrder.RowMajor) c;
+		c[] = a * b;     writeln( c.pretty );
+		c[] = b.t * a.t;   writeln( c.pretty );
+		c[] = a.t * b.t; writeln( c.pretty );
+		
+		
+		readln();
+		
+		//opTest();
+		//dMatInvTest();
 	}
 }

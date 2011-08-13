@@ -16,6 +16,7 @@ import scid.vector;
 import scid.matrix;
 
 import std.typecons;
+import std.exception;
 
 import scid.common.traits;
 
@@ -114,6 +115,7 @@ mixin template GeneralMatrixScalingAndAddition() {
 	
 	void invert() {
 		import scid.lapack;
+		import std.exception;
 		
 		int info;
 		size_t n = this.rows;
@@ -126,12 +128,13 @@ mixin template GeneralMatrixScalingAndAddition() {
 		lapack.getrf( n, n, this.data, this.leading, ipiv.ptr, info );
 		lapack.getri( n, this.data, this.leading, ipiv.ptr, work.ptr , work.length, info );
 		
-		assert( info == 0, "Inversion of singular matrix." );
+		enforce( info == 0, "Inversion of singular matrix." );
 	}
 	
 	void solveRight( Transpose transM = Transpose.no, Side side, Dest )( auto ref Dest dest ) if( isStridedVectorStorage!Dest || isGeneralMatrixStorage!Dest ) {
 		import scid.blas;
 		import scid.lapack;
+		import std.exception;
 		
 		size_t n = this.rows;                                           // check that the matrix is square
 		assert( n == this.columns, "Inversion of non-square matrix." );
@@ -188,10 +191,9 @@ mixin template GeneralMatrixScalingAndAddition() {
 		
 		enum chSide = (side == Side.Left) ? 'L' : 'R';
 		
-		lapack.getrf( n, n, a, n, ipiv, info );                    // perform LU decomposition
+		lapack.getrf( n, n, a, n, ipiv, info );                    // perform LU decomposition	
+		enforce( info == 0, "Inversion of singular matrix." );
 		lapack.xgetrs!(chTrans, chSide)( n, nrhs, a, n, ipiv, b, ldb, info ); // perform inv-mult
-		
-		assert( info == 0, "Singular matrix in inversion." );
 		
 		static if( vectorRhs ) {
 			// copy the data back to dest if needed
@@ -199,43 +201,65 @@ mixin template GeneralMatrixScalingAndAddition() {
 				blas.copy( ldb, b, 1, dest.data, dest.stride );
 		}
 	}
-	/*
+	
 	void matrixProduct( Transpose transA = Transpose.no, Transpose transB = Transpose.no, A, B )
 			( ElementType alpha, auto ref A a, auto ref B b, ElementType beta ) if( isGeneralMatrixStorage!A && isGeneralMatrixStorage!B ) {
 		import scid.blas;
+		
 		enum orderA = transposeStorageOrder!( storageOrderOf!A, transA );
 		enum orderB = transposeStorageOrder!( storageOrderOf!B, transB );
 		enum orderC = storageOrder;
 		
-		static if( !isComplexScalar!ElementType ) {
-			static if( (orderA != orderC) || (orderB != orderC) )
-				matrixProduct!( transNot!transB, transNot!transA )( alpha, b, a, beta );
-			else {
-				enum chTransA = (orderA != orderB) ^ transA ? 't' : 'n';
-				enum chTransB = (orderB != orderA) ^ transB ? 't' : 'n';
-			
-				static if( !transA )
-					auto m = a.rows, ak = a.columns;
-				else
-					auto m = a.columns, ak = a.rows;
-			
-				static if( !transB )
-					auto n = b.columns, bk = b.rows;
-				else
-					auto n = b.rows, bk = b.columns;
-			
-				assert( ak == bk, format("Inner dimensions do not match in matrix product: %d vs. %d", ak, bk) );
-				if( beta )
-					assert( this.rows == m && this.columns == n, dimMismatch_(m,n,"addition") );
-				else
-					this.resize( m, n, null );
-				assert( a.cdata && b.cdata );
-				blas.gemm( chTransA, chTransB, m, n, ak, alpha, a.cdata, a.leading, b.cdata, b.leading, beta, this.data, this.leading );	
-			}
-		} else {
-			assert( false );
+		enum complexElems = isComplexScalar!ElementType;
+		
+		static if( orderC == StorageOrder.RowMajor ) {
+			pragma( msg, "Row-Major gemm is unsupoorted, fallback will be used" );
+			static assert( false );
 		}
-	}*/
+		
+		static if( !complexElems ) {
+			enum chA = orderA == orderC ? 'N' : 'T';
+			enum chB = orderB == orderC ? 'N' : 'T';
+			enum doConj = false;
+		} else {
+			static if( orderA == orderC && transA && orderB == orderC && transB ) {
+				enum bool doConj = true;
+				enum chA = 'N';
+				enum chB = 'N';
+			} else static if( orderA == orderC && transA ) {
+				enum bool doConj = true;
+				enum chA = 'N';
+				enum chB = orderB == orderC ? 'N' : (transb ? 'T' : 'C');
+			} else static if( orderB == orderC && transB ) {
+				enum bool doConj = true;
+				enum chA = orderA == orderC ? 'N' : (transa ? 'T' : 'C');
+				enum chB = 'N';
+			} else {
+				enum bool doConj = false;
+				enum chA = orderA == orderC ? 'N' : (transa ? 'C' : 'T');
+				enum chB = orderB == orderC ? 'N' : (transb ? 'C' : 'T');		
+			}
+		}
+		
+		static if( chA != 'N' )
+			size_t m = a.major, k = a.minor;
+		else
+			size_t m = a.minor, k = a.major;
+		
+		static if( chB != 'N' ) {
+			size_t n = b.minor;
+			assert( k == b.major );
+		} else {
+			size_t n = b.major;
+			assert( k == b.minor );
+		}
+		
+		resize( m, n, null );
+		
+		blas.gemm!( chA, chB )( m, n, k, alpha, a.cdata, a.leading, b.cdata, b.leading, beta, this.data, this.leading );
+		static if( doConj )
+			blas.xgecopyc( m, n, this.data, this.leading, this.data, this.leading );
+	}
 }
 
 /** Compute the dot product of a row and a column of possibly transposed matrices. */

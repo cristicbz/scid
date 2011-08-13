@@ -186,7 +186,7 @@ struct blas {
 		static if( isFortranType!T && !forceNaive )
 			blas_.gemm( transa, transb, toi(m), toi(n), toi(k), alpha, a, toi(lda), b, toi(ldb), beta, c, toi(ldc) );
 		else
-			static assert( false, "There is no naive implementation of gemm available." );
+			naive_.gemm!( transa, transb )( m, n, k, alpha, a, lda, b, ldb, beta, c, ldc );
 		
 		debug( blasCalls )
 			writeln( matrixToString( 'N', m, n, c, ldc ) );
@@ -608,6 +608,34 @@ private struct naive_ {
 	}
 	
 	// Level 3
+	
+	static void gemm( char transa_, char transb_, T )( size_t m, size_t n, size_t k, T alpha, const(T)* a, size_t lda, const(T) *b, size_t ldb, T beta, T *c, size_t ldc ) {
+		enum transa = cast(char)toUpper(transa_);
+		enum transb = cast(char)toUpper(transb_);
+		
+		T geta( size_t i, size_t j ) {
+			static if      ( transa == 'N' ) return a[ i + j * lda ];
+			else static if ( transa == 'T' ) return a[ j + i * lda ];
+			else static if ( transa == 'C' ) return blas.xconj( a[ j + i * lda ] );
+		}
+		
+		T getb( size_t i, size_t j ) {
+			static if      ( transb == 'N' ) return b[ i + j * ldb ];
+			else static if ( transb == 'T' ) return b[ j + i * ldb ];
+			else static if ( transb == 'C' ) return blas.xconj( b[ j + i * ldb ] );
+		}
+		
+		void setc( T rhs, size_t i, size_t j ) { c[ i + j * ldc ] = rhs; }
+		T getc( size_t i, size_t j ) { return c[ i + j * ldc ]; }
+		
+		foreach( col ; 0 .. n ) foreach( row ; 0 .. m ) {
+			T x = getc( row, col ) * beta;
+			T tmp = Zero!T;
+			foreach( ki ; 0 .. k )	
+				tmp += geta( row, ki ) * getb( ki, col );
+			setc( x * beta + tmp * alpha, row, col );
+		}
+	}
 	
 	static void trsm( char side_, char uplo_, char trans_, char diag_,T )( size_t m, size_t n, T alpha, const(T)* a, size_t lda, T* b, size_t ldb ) {
 		enum side = cast(char)toUpper(side_);

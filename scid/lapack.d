@@ -4,7 +4,7 @@ import scid.common.traits, scid.common.meta;
 import std.algorithm, std.math, std.conv;
 import std.ascii, std.exception;
 
-//debug = lapackCalls;
+// debug = lapackCalls;
 //version = nodeps;
 
 debug( lapackCalls ) {
@@ -277,7 +277,7 @@ private struct naive_ {
 		
 		T ajj;
 		if( uplo == 'U' ) {
-                        for( int j = 0; j < n; j++ ) {
+			for( size_t j = 0; j < n; j++ ) {
 				if( diag == 'N' ) {
 					// assert( get( j, j ) != Zero!T, "fbti: Singular matrix in inverse." );
 					if( get( j, j ) == Zero!T ) {
@@ -295,7 +295,7 @@ private struct naive_ {
 				blas.scal( j, ajj, a + j*lda, 1 );	
 			}
 		} else {
-			for( int j = toi(n) - 1 ; j >= 0 ; -- j ) {
+			for( size_t j = n - 1 ; j >= 0 ; -- j ) {
 				if( diag == 'N' ) {
 					// assert( get( j, j ) != Zero!T, "fbti: Singular matrix in inverse." );
 					set( One!T / get(j,j), j, j );
@@ -325,10 +325,10 @@ private struct naive_ {
 			mixin("a[ j * lda + i ] "~op~"= x;");
 		}
 		
-		for( int k = 0; k < n; k++ ) { 
+		for( size_t k = 0; k < n; k++ ) { 
 			pivot[ k ] = k;
 			T maxSoFar = abs( get( k, k ) );
-                        for( int j = k + 1; j < n; j++ ) {
+			for( size_t j = k + 1; j < n; j++ ) {
 				T cur = abs( get(j, k) );
 				if( maxSoFar <= cur ) {
 					maxSoFar = cur;
@@ -344,18 +344,19 @@ private struct naive_ {
 				}
 			}
 		
-			if( get(k,k) == Zero!T )
-				info = k;
+			if( get(k,k) != Zero!T ) {
+				
+				foreach( i ; k + 1 .. n )
+					set!"/"( get(k,k), i, k );
 		
-			foreach( i ; k + 1 .. n )
-				set!"/"( get(k,k), i, k );
-		
-			foreach( i ; k + 1 .. n ) {
-				foreach( j ; k + 1 .. n ) {
-					set!"-"( get(i,k) * get(k,j), i, j );
+				foreach( i ; k + 1 .. n ) {
+					foreach( j ; k + 1 .. n ) {
+						set!"-"( get(i,k) * get(k,j), i, j );
+					}
 				}
+			} else if( info == 0 ) {
+				info = k + 1;
 			}
-			
 			++ pivot[ k ]; // convert to FORTRAN index
 		}
 	}

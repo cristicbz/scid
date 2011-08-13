@@ -81,8 +81,7 @@ string stridedToString( S )( const(S)* ptr, size_t len, size_t stride ) {
 		auto app = appender!string("[");
 		app.put( to!string(*ptr) );
 		auto e = ptr + len * stride;
-		ptr += stride;
-		for( ; ptr < e ; ptr += stride ) {
+		for( ptr += stride; ptr < e ; ptr += stride ) {
 			app.put( ", " );
 			app.put( to!string( *ptr ) );
 		} 
@@ -110,7 +109,7 @@ in {
 	} else {
 		app.put( stridedToString(a, m, 1) );
 		auto e = a + n * lda;
-		for( ++ a; a < e ; a += lda ) {
+		for( a += lda ; a < e ; a += lda ) {
 			app.put( ", " );
 			app.put( stridedToString( a, m, 1 ) );
 		}
