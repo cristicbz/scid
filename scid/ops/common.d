@@ -199,7 +199,7 @@ mixin template GeneralMatrixScalingAndAddition() {
 				blas.copy( ldb, b, 1, dest.data, dest.stride );
 		}
 	}
-	/*
+	
 	void matrixProduct( Transpose transA = Transpose.no, Transpose transB = Transpose.no, A, B )
 			( ElementType alpha, auto ref A a, auto ref B b, ElementType beta ) if( isGeneralMatrixStorage!A && isGeneralMatrixStorage!B ) {
 		import scid.blas;
@@ -230,12 +230,12 @@ mixin template GeneralMatrixScalingAndAddition() {
 				else
 					this.resize( m, n, null );
 				assert( a.cdata && b.cdata );
-				blas.gemm( chTransA, chTransB, m, n, ak, alpha, a.cdata, a.leading, b.cdata, b.leading, beta, this.data, this.leading );	
+				blas.gemm!( chTransA, chTransB )( m, n, ak, alpha, a.cdata, a.leading, b.cdata, b.leading, beta, this.data, this.leading );	
 			}
 		} else {
 			assert( false );
 		}
-	}*/
+	}
 }
 
 /** Compute the dot product of a row and a column of possibly transposed matrices. */
