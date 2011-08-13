@@ -1,5 +1,5 @@
 /** Fallback routines for evaluating primitive operations.
-    
+
     Authors:    Cristian Cobzarenco
     Copyright:  Copyright (c) 2011, Cristian Cobzarenco. All rights reserved.
     License:    Boost License 1.0
@@ -31,25 +31,25 @@ void fallbackMatrixProduct( Transpose transA, Transpose transB, A, B, E, Dest )
 		( E alpha, auto ref A a, auto ref B b, E beta, auto ref Dest dest ) {
 	size_t m = transA ? a.columns : a.rows;
 	size_t n = transB ? b.rows : b.columns;
-	
+
 	if( !alpha ) {
 		if( !beta ) dest.resize( m, n );
 		else        evalScaling( beta, dest );
 		return;
-	} 
-	
+	}
+
 	if( !beta )
 		dest.resize( m, n, null );
 	else
 		assert( dest.rows == m && dest.columns == n, "Matrix size mismatch in matrix addition." );
-		
-		
+
+
 	void doElement( size_t i, size_t j ) {
 		E dot = rowColumnDot!( transA, transB )(a, i, b, j);
 		dot *= alpha; if( beta ) dot += beta * dest[i, j];
 		dest[ i, j ] = dot;
 	}
-		
+
 	static if( Dest.storageOrder == StorageOrder.RowMajor ) {
 		foreach( i ; 0 .. m ) {
 			foreach( j ; 0 .. n ) doElement( i, j );
@@ -64,28 +64,28 @@ void fallbackMatrixProduct( Transpose transA, Transpose transB, A, B, E, Dest )
 /** Manually compute the dot product of two vectors. */
 auto fallbackDot( Transpose transA, Transpose transB, A, B )( ref A a, ref B b ) {
 	alias BaseElementType!A T;
-	
+
 	assert( a.length == b.length, "fbdot: Vector length mismatch in fallback dot product." );
 	debug( fallbackCalls )  {
 		string aStr = a.toString() ~ (transA ? ".t" : "");
 		string bStr = b.toString() ~ (transB ? ".t" : "");
 		write( "fb_dot( ", aStr , ", ", bStr, " ) => " );
 	}
-	int n = a.length;
+	auto n = a.length;
 	auto r = Zero!T;
-		
+
 	foreach( i ; 0 .. n ) {
 		static if( !isComplexScalar!T || (transA == transB) )
 			r += a[ i ] * b[ i ];
 		else static if(  transA && !transB )
 			r += gconj( a[ i ] ) * b[ i ];
-		else 
+		else
 			r += a[ i ] * gconj( b[ i ] );
 	}
-		
+
 	static if( transA && transB && isComplexScalar!T )
 		r = gconj( r );
-		
+
 	debug( fallbackCalls ) writeln( r );
 	return r;
 }
@@ -94,21 +94,21 @@ auto fallbackDot( Transpose transA, Transpose transB, A, B )( ref A a, ref B b )
 void fallbackMatrixVectorProduct( Transpose transM, Transpose transV, M, V, Dest, E )( E a, ref M m, ref V v, E b, ref Dest dest ) {
 	auto rows = transM ? m.columns : m.rows;
 	auto cols = transM ? m.rows    : m.columns;
-	
+
 	assert( cols == v.length, "fbmv: Dimensions mismatch in matrix-vector product - " ~ to!string( cols ) ~ " vs. " ~ to!string( v.length ) );
-	
+
 	if( b )
 		assert( rows == dest.length, "fbmv: Dimensions mismatch in vector-vector addition - " ~ to!string( rows ) ~ " vs. " ~ to!string( dest.length ) );
 	else
 		dest.resize( rows );
-	
+
 	assert( rows == dest.length );
-	
+
 	foreach( i ; 0 .. rows ) {
 		static if( transM )
-			dest[ i ] = evalDot!(transM,transV)( m.column( i ), v ) + b * dest[ i ];
+			dest[ i ] = evalDot!(transM,transV)( a * m.column( i ), v ) + b * dest[ i ];
 		else
-			dest[ i ] = evalDot!(transM,transV)( m.row( i ), v ) + b * dest[ i ];
+			dest[ i ] = evalDot!(transM,transV)( a * m.row( i ), v ) + b * dest[ i ];
 	}
 }
 
@@ -120,7 +120,7 @@ void fallbackScaling( Scalar, Dest )( Scalar alpha, auto ref Dest dest ) {
 		debug( fallbackCalls ) write( "fbscal( ", alpha, ", ", dest.toString, " ) => " );
 		for( size_t i = 0; i < l ; ++ i )
 			dest[ i ] *= alpha;
-		debug( fallbackCalls ) writeln( dest.toString() );	
+		debug( fallbackCalls ) writeln( dest.toString() );
 	} else static if( destClosure == Closure.Matrix ) {
 		static if( storageOrderOf!Dest == StorageOrder.RowMajor ) {
 			size_t n = dest.rows;
@@ -140,7 +140,7 @@ void fallbackScaling( Scalar, Dest )( Scalar alpha, auto ref Dest dest ) {
 void fallbackCopy( Transpose srcTrans, Source, Dest )( auto ref Source source, auto ref Dest dest ) {
 	alias srcTrans tr;
 	enum destClosure = closureOf!Dest;
-	
+
 	static if( isVectorClosure!destClosure ) {
 		// fallback vector copy
 		debug( fallbackCalls ) { write( "fbcopy( ", source.toString(), ", ", dest.toString(), " ) => " ); }
@@ -154,8 +154,8 @@ void fallbackCopy( Transpose srcTrans, Source, Dest )( auto ref Source source, a
 		size_t m = tr ? source.columns : source.rows;
 		size_t n = tr ? source.rows    : source.columns;
 		assert( m == dest.rows && n == dest.columns, "fbcopy: Matrix size mismatch in fallback matrix assignment.");
-		
-		static if( storageOrderOf!Dest == StorageOrder.RowMajor ) {	
+
+		static if( storageOrderOf!Dest == StorageOrder.RowMajor ) {
 			for( auto i = 0; i < m ; ++ i )
 				static if( tr )
 					evalCopy!tr( source.column(i), dest.row( i ) );
@@ -178,8 +178,8 @@ void fallbackScaledAddition( Transpose srcTrans, Scalar, Source, Dest )
 		( Scalar alpha, auto ref Source source, auto ref Dest dest ) {
 	enum destClosure = closureOf!Dest;
 	alias srcTrans tr;
-			
-	static if( isVectorClosure!destClosure ) {	
+
+	static if( isVectorClosure!destClosure ) {
 		// fallback vector axpy
 		auto alphaValue = eval( alpha );
 		debug( fallbackCalls ) {
@@ -194,7 +194,7 @@ void fallbackScaledAddition( Transpose srcTrans, Scalar, Source, Dest )
 			} else {
 				dest[ i ] += source[ i ] * alphaValue;
 			}
-			
+
 		}
 		debug( fallbackCalls ) writeln( dest.toString() );
 	} else static if( destClosure == Closure.Matrix ) {
@@ -203,32 +203,32 @@ void fallbackScaledAddition( Transpose srcTrans, Scalar, Source, Dest )
 		size_t m = tr ? source.columns : source.rows;
 		size_t n = tr ? source.rows    : source.columns;
 		assert( m == dest.rows && n == dest.columns, "Matrix size mismatch in matrix addition.");
-		
-		static if( dest.storageOrder == StorageOrder.RowMajor ) {	
+
+		static if( dest.storageOrder == StorageOrder.RowMajor ) {
 			for( auto i = 0; i < m ; ++ i )
 				static if( tr ) evalScaledAddition!tr( alpha, source.column(i), dest.row( i ) );
 				else            evalScaledAddition( alpha, source.row(i),    dest.row( i ) );
 		} else {
 			for( auto i = 0; i < n ; ++ i ) {
 				import std.stdio;
-				
+
 				static if( tr ) evalScaledAddition!tr( alpha, source.row(i),    dest.column( i ) );
 				else            evalScaledAddition( alpha, source.column(i), dest.column( i ) );
-				
+
 			}
 		}
-	} else static assert( false );		
+	} else static assert( false );
 }
 
 /** Solves a linear problem (i.e. sv/sm in BLAS terms). */
 void fallbackSolve( Transpose transM, Side side, M, Dest )( auto ref M mat, auto ref Dest dest ) {
 	auto alloc = newRegionAllocator();
-	
+
 	static if( transM )
 		auto matInverse = eval( inv( mat.t ), alloc );
 	else
 		auto matInverse = eval( inv( mat ), alloc );
-	
+
 	static if( side == Side.Left )
 		dest[] = eval( matInverse * dest, alloc );
 	else
@@ -240,15 +240,15 @@ void fallbackScalarAddition( Value, Beta, Dest )( Value value_, Beta beta_, auto
 	alias BaseElemntType!Dest T;
 	static assert( isConvertible!( Value, T ) );
 	static assert( isConvertible!( Beta, T ) );
-	
+
 	T value = to!T( value_ );
 	T beta  = to!T( beta_ ) ;
-	
+
 	if( !value_ ) {
 		evalScaling( beta, dest );
 		return;
 	}
-	
+
 	static if( isVectorClosure!(cloureOf!Dest) ) {
 		if( beta_ ) {
 			T temp;
@@ -293,39 +293,39 @@ void fallbackScalarAddition( Value, Beta, Dest )( Value value_, Beta beta_, auto
 					}
 				}
 			}
-		}	
+		}
 	}
 }
 
 /** Matrix inversion. */
 void fallbackInverse( M )( ref M mat ) {
 	alias BaseElementType!M T;
-	
+
 	assert( mat.rows == mat.columns,
 		   format( "Cannot invert non-square matrix with dimensions %d and %d.", mat.rows, mat.columns ) );
-	
+
 	size_t n = mat.rows;
-	
+
 	if( n == 1 ) {
 		assert( mat[ 0, 0 ] != Zero!T, "Singular matrix in inversion" );
 		mat[ 0, 0 ] = One!T / mat[ 0, 0 ];
 		return;
 	}
-	
+
 	T get( size_t i, size_t j ) {
 		//static if( storageOrderOf!M == StorageOrder.ColumnMajor )
 			return mat[ j, i ];
 		//else
 			//return mat[ i, j ];
 	}
-	
+
 	void set(string op = "/")( T x, size_t i, size_t j ) {
 		//static if( storageOrderOf!M == StorageOrder.ColumnMajor )
 			mixin( "mat[ j, i ] " ~ op ~ "= x;" );
 		//else
 			//mixin( "mat[ i, j ] " ~ op ~ "= x;" );
 	}
-	
+
 	// normalize first row
 	auto normWith = get(0,0);
 	foreach( i ; 1 .. n )
@@ -338,13 +338,13 @@ void fallbackInverse( M )( ref M mat ) {
 			T sum = Zero!T;
 			foreach( k ; 0 .. i )
 				sum += get( i, k ) * get( k, i );
-			
+
 			set!"-"( sum, j, i );
 		}
-	
+
 		if( i == n - 1 )
 			continue;
-		
+
 		// Row of U
 		foreach( j ; i+1 .. n ) {
 			T sum = Zero!T;
@@ -353,7 +353,7 @@ void fallbackInverse( M )( ref M mat ) {
 			set( (get(i,j) - sum ) / get( i, i ), i, j );
 		}
 	}
-	
+
 	// Invert L
 	foreach( i ; 0 .. n ) {
 		foreach( j ; i .. n ) {
@@ -366,7 +366,7 @@ void fallbackInverse( M )( ref M mat ) {
 			set( x / get(j,j), j, i );
 		}
 	}
-	
+
 	// Invert U
 	foreach( i ; 0 .. n ) {
 		foreach( j ; i .. n ) {
@@ -377,7 +377,7 @@ void fallbackInverse( M )( ref M mat ) {
 			set( -sum, i, j );
 		}
 	}
-	
+
 	// final inversion
 	foreach( i ; 0 .. n ) {
 		foreach( j ; 0 .. n ) {
