@@ -49,6 +49,31 @@ template storageTypeOf( M ) {
 	}
 }
 
+/**
+This template allows for the creation of SciD's general (i.e. not triangular,
+symmetric, banded, etc.) matrix storage type.  A SciD Matrix is a 
+two-dimensional array-like object that has reference-counted copy-on-write 
+semantics.  It can be used in SciD expressions.  StorageOrder controls whether 
+the elements within each column are stored at consecutive memory addresses 
+(ColumnMajor) or the elements within each row are stored at consecutive memory 
+addresses (RowMajor).  
+
+Examples:
+---
+// Create a SciD matrix from an array-of-arrays.
+double[][] arrayOfArrays = [[1.0, 2.0], [3.0, 4.0]];
+auto mat1 = Matrix!double(arrayOfArrays);
+mat1[0, 0] = 42;
+assert(arrayOfArrays[0][0] == 1);  // arrayOfArrays is copied.
+auto mat2 = mat1;
+mat2[1, 1] = 84;
+assert(mat1[1, 1] == 4);  // Value semantics.
+
+// Create a SciD matrix from a type, a number of rows and a number of
+// columns.
+auto mat3 = Matrix!float(8, 4);  // 8x4 matrix of floats.
+---
+*/
 template Matrix( ElementOrStorage, StorageOrder order_ = StorageOrder.ColumnMajor )
 		if( isScalar!(BaseElementType!ElementOrStorage) ) {
 	
@@ -56,6 +81,40 @@ template Matrix( ElementOrStorage, StorageOrder order_ = StorageOrder.ColumnMajo
 		alias BasicMatrix!( GeneralMatrixStorage!(ElementOrStorage,order_) ) Matrix;
 	else
 		alias BasicMatrix!( ElementOrStorage )                               Matrix;
+}
+
+/**
+Convenience function for creating a matrix from an array of arrays.
+
+Examples:
+---
+double[][] arrayOfArrays = [[1.0, 2.0], [3.0, 4.0]];
+
+// The following are equivalent:
+auto mat1 = matrix(arrayOfArrays);
+auto mat2 = Matrix!double(arrayOfArrays);
+---
+*/
+Matrix!( T, order ) 
+matrix( T, StorageOrder order = StorageOrder.ColumnMajor )
+( T[][] arrayOfArrays ) {
+    return typeof(return)(arrayOfArrays);
+}
+
+unittest {
+    // Test examples.
+    // Create a SciD matrix from an array-of-arrays.
+    double[][] arrayOfArrays = [[1.0, 2.0], [3.0, 4.0]];
+    auto mat1 = matrix(arrayOfArrays);
+    mat1[0, 0] = 42;
+    assert(arrayOfArrays[0][0] == 1);  // arrayOfArrays is copied.
+    auto mat2 = mat1;
+    mat2[1, 1] = 84;
+    assert(mat1[1, 1] == 4);  // Value semantics.
+
+    // Create a SciD matrix from a type, a number of rows and a number of
+    // columns.
+    auto mat3 = Matrix!float(8, 4);  // 8x4 matrix of floats.
 }
 
 template MatrixView( ElementOrStorageType, StorageOrder order_ = StorageOrder.ColumnMajor ) {
