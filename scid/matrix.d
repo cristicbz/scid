@@ -1,535 +1,1053 @@
-/** This module contains the MatrixView class as well as some
-    functions related to it.
-
-    Authors:    Lars Tandle Kyllingstad
-    Copyright:  Copyright (c) 2009, Lars T. Kyllingstad. All rights reserved.
-    License:    Boost License 1.0
-*/
 module scid.matrix;
 
+import scid.internal.assertmessages;
+import scid.ops.common;
+import scid.storage.generalmat;
+import scid.storage.generalmatview;
+import scid.storage.triangular;
+import scid.storage.symmetric;
+import scid.storage.diagonalmat;
+import scid.storage.cowmatrix;
+import scid.storage.external;
+import scid.storage.constant;
+import scid.common.traits;
 
-//private import std.conv;
-import std.string: format, repeat;
-import std.traits;
+import std.algorithm, std.range, std.conv;
 
-import scid.core.meta;
-import scid.core.traits;
-
-version(unittest) {
-    import scid.core.testing; 
-    import std.math;
+enum MatrixTriangle {
+	Upper, Lower
 }
 
-
-
-
-/** Various matrix representations. */
-enum Storage
-{
-    General,        /// General (dense) matrices
-    Triangular,     /// Packed storage of triangular matrices
-    Symmetric,      /// Packed storage of symmetric matrices
+enum StorageOrder {
+	RowMajor, ColumnMajor
 }
 
+enum MatrixStorageType {
+	Virtual, General,
+	Triangular, Symmetric, Hermitian,
+	GeneralBand, SymmetricBand, HermitianBand,
+	Diagonal
+};
 
-/** In packed storage (triangular, symmetric, and Hermitian matrices),
-    one can choose to store either the upper or lower triangle.
+template storageOrderOf( M ) {
+	static if( is( typeof(M.storageOrder) ) )
+		enum storageOrderOf = M.storageOrder;
+	else static if( is( M E : RefCounted!(E,a), uint a ) )
+		enum storageOrderOf = storageOrderOf!E;
+	else {
+		static assert( false, M.stringof ~ " hasn't got a storage order. ");
+	}
+}
+
+template storageTypeOf( M ) {
+	static if( is( typeof(M.storageType) ) )
+		enum storageTypeOf = M.storageType;
+	else static if( is( M E : RefCounted!(E,a), uint a ) )
+		enum storageTypeOf = storageTypeOf!E;
+	else {
+		static assert( false, M.stringof ~ " hasn't got a storage type. ");
+	}
+}
+
+/**
+This template allows for the creation of SciD's general (i.e. not triangular,
+symmetric, banded, etc.) matrix storage type.  A SciD Matrix is a 
+two-dimensional array-like object that has reference-counted copy-on-write 
+semantics.  It can be used in SciD expressions.  StorageOrder controls whether 
+the elements within each column are stored at consecutive memory addresses 
+(ColumnMajor) or the elements within each row are stored at consecutive memory 
+addresses (RowMajor).  
+
+Examples:
+---
+// Create a SciD matrix from an array-of-arrays.
+double[][] arrayOfArrays = [[1.0, 2.0], [3.0, 4.0]];
+auto mat1 = Matrix!double(arrayOfArrays);
+mat1[0, 0] = 42;
+assert(arrayOfArrays[0][0] == 1);  // arrayOfArrays is copied.
+auto mat2 = mat1;
+mat2[1, 1] = 84;
+assert(mat1[1, 1] == 4);  // Value semantics.
+
+// Create a SciD matrix from a type, a number of rows and a number of
+// columns.
+auto mat3 = Matrix!float(8, 4);  // 8x4 matrix of floats.
+---
 */
-enum Triangle : char
-{
-    Upper = 'U',    /// Store upper triangle
-    Lower = 'L'     /// Store lower triangle
+template Matrix( ElementOrStorage, StorageOrder order_ = StorageOrder.ColumnMajor )
+		if( isScalar!(BaseElementType!ElementOrStorage) ) {
+	
+	static if( isScalar!ElementOrStorage )
+		alias BasicMatrix!( GeneralMatrixStorage!(ElementOrStorage,order_) ) Matrix;
+	else
+		alias BasicMatrix!( ElementOrStorage )                               Matrix;
 }
 
+/**
+Convenience function for creating a matrix from an array of arrays.
 
+Examples:
+---
+double[][] arrayOfArrays = [[1.0, 2.0], [3.0, 4.0]];
 
-
-/** A convenience function that allocates heap memory for a matrix,
-    optionally sets the values of the matrix elements, and returns
-    a MatrixView of the allocated memory.
-
-    Examples:
-    ---
-    // Allocate general dense 3x4 matrix:
-    auto denseMatrix = matrix!real(3, 4);
-
-    // Allocate dense 3x2 zero-filled matrix:
-    auto denseZeroMatrix = matrix!real(3, 2, 0.0L);
-
-    // Allocate lower triangular 3x3 matrix:
-    auto loMatrix = matrix!(real, Storage.Triangular, Triangle.Lower)(3);
-
-    // Allocate upper triangular 2x2 matrix where the upper
-    // triangular elements are set to 3.14.
-    auto upMatrix = matrix!(real, Storage.Triangular)(2, 3.14L);
-    ---
+// The following are equivalent:
+auto mat1 = matrix(arrayOfArrays);
+auto mat2 = Matrix!double(arrayOfArrays);
+---
 */
-MatrixView!(T) matrix (T) (size_t rows, size_t cols) pure
-{
-    return typeof(return)(new T[rows*cols], rows, cols);
+Matrix!( T, order ) 
+matrix( T, StorageOrder order = StorageOrder.ColumnMajor )
+( T[][] arrayOfArrays ) {
+    return typeof(return)(arrayOfArrays);
 }
 
+unittest {
+    // Test examples.
+    // Create a SciD matrix from an array-of-arrays.
+    double[][] arrayOfArrays = [[1.0, 2.0], [3.0, 4.0]];
+    auto mat1 = matrix(arrayOfArrays);
+    mat1[0, 0] = 42;
+    assert(arrayOfArrays[0][0] == 1);  // arrayOfArrays is copied.
+    auto mat2 = mat1;
+    mat2[1, 1] = 84;
+    assert(mat1[1, 1] == 4);  // Value semantics.
 
-/// ditto
-MatrixView!(T) matrix(T) (size_t rows, size_t cols, T init) pure
-{
-    auto array = new T[rows*cols];
-    array[] = init;
-    return typeof(return)(array, rows, cols);
+    // Create a SciD matrix from a type, a number of rows and a number of
+    // columns.
+    auto mat3 = Matrix!float(8, 4);  // 8x4 matrix of floats.
 }
 
-
-///ditto
-MatrixView!(T, stor, tri) matrix
-    (T, Storage stor, Triangle tri = Triangle.Upper)
-    (size_t n, T init=T.init)
-    pure
-    if (stor == Storage.Triangular)
-{
-    auto array = new T[(n*n+n)/2];
-    if (init != T.init) array[] = init; // Because of DMD bug #3576 this can't
-                                        // be done with a function overload.
-    return typeof(return)(array, n);
+template MatrixView( ElementOrStorageType, StorageOrder order_ = StorageOrder.ColumnMajor ) {
+	alias Matrix!( ElementOrStorageType, order_ ).View MatrixView;
 }
 
-unittest
-{
-    auto dense1 = matrix!real(3, 4);
-    check (dense1.rows == 3  &&  dense1.cols == 4);
-    check (isNaN(dense1[1,2]));
-
-    auto dense2 = matrix(4, 3, 1.0);
-    check (dense2.rows == 4  &&  dense2.cols == 3);
-    check (dense2[1,2] == 1.0);
-
-    auto upTri = matrix!(real, Storage.Triangular)(3);
-    check (upTri.rows == 3  &&  upTri.cols == 3);
-    check (isNaN(upTri[0,2])  &&  upTri[2,0] == 0);
-
-    auto loTri = matrix!(double, Storage.Triangular, Triangle.Lower)(3, 1.0);
-    check (loTri.rows == 3  &&  loTri.cols == 3);
-    check (loTri[0,2] == 0  &&  loTri[2,0] == 1.0);
-
+template TriangularMatrix( ElementOrArray, MatrixTriangle tri_ = MatrixTriangle.Upper, StorageOrder order_ = StorageOrder.ColumnMajor )
+		if( isScalar!(BaseElementType!ElementOrArray) ) {
+	
+	alias BasicMatrix!( TriangularStorage!(ElementOrArray,tri_,order_) ) TriangularMatrix;
 }
 
-
-
-
-/** A convenience function that creates a copy of the input matrix. */
-MatrixView!(T, stor, tri) copy(T, Storage stor, Triangle tri)
-    (const MatrixView!(T, stor, tri) m)
-    pure
-{
-    MatrixView!(T, stor, tri) mcopy;
-    mcopy.rows = m.rows;
-    mcopy.cols = m.cols;
-    mcopy.array = m.array.dup;
-    return mcopy;
+template SymmetricMatrix( ElementOrArray, MatrixTriangle tri_ = MatrixTriangle.Upper, StorageOrder order_ = StorageOrder.ColumnMajor )
+		if( isScalar!(BaseElementType!ElementOrArray) ) {
+	
+	alias BasicMatrix!( SymmetricStorage!(ElementOrArray,tri_,order_) ) SymmetricMatrix;
 }
 
-unittest
-{
-    auto a = matrix!double(2, 2);
-    a[1,0] = 1.0;
-    auto b = copy(a);
-    b[1,0] = 2.0;
-    check (b[1,0] == 2.0  &&  a[1,0] == 1.0);
+template DiagonalMatrix( ElementOrArray )
+		if( isScalar!(BaseElementType!ElementOrArray) ) {
+	
+	alias BasicMatrix!( DiagonalMatrixStorage!(ElementOrArray ) ) DiagonalMatrix;
 }
 
+template ExternalMatrixView( ElementOrContainer, StorageOrder order_ = StorageOrder.ColumnMajor )
+		if( isScalar!( BaseElementType!ElementOrContainer ) ) {
+	
+	static if( isScalar!ElementOrContainer ) {
+		alias BasicMatrix!(
+			BasicGeneralMatrixViewStorage!(
+				ExternalMatrix!( ElementOrContainer, order_,
+					CowMatrixRef!( ElementOrContainer, order_ )
+				)
+			)
+		) ExternalMatrixView;
+	} else {
+		alias BasicMatrix!(
+			BasicGeneralMatrixViewStorage!(
+				ExternalMatrix!(
+					BaseElementType!ElementOrContainer,
+					storageOrderOf!ElementOrContainer,
+					ElementOrContainer
+				)
+			)
+		) ExternalMatrixView;
+	}
+}
 
+struct BasicMatrix( Storage_ ) {
+	/** The type of the matrix elements. The same as the element type of the storage */
+	alias BaseElementType!Storage_ ElementType;
+	
+	/** The wrapped storage type. */
+	alias Storage_ Storage;
+	
+	/** The storage order (StorageOrder.RowMajor or StorageOrder.ColumnMajor). */
+	static if( is( typeof(storageOrderOf!Storage) ) )
+		alias storageOrderOf!Storage   storageOrder;
+	else
+		alias StorageOrder.ColumnMajor storageOrder;
+	
+	/** The type of the vector view of a matrix row (i.e. the return type of row(i)). */
+	alias typeof(Storage.init.row(0)) RowView;
+	
+	/** The type of the vector view of a matrix column (i.e. the return type of column(j)). */
+	alias typeof(Storage.init.column(0)) ColumnView;
+	
+	/** The type of a view of the storage (i.e. the return type of storage.view). */
+	alias typeof(Storage.init.view(0,0,0,0)) StorageView;
+	
+	/** The type of a slice of the storage (i.e. the return type of storage.slice). */
+	alias typeof(Storage.init.slice(0,0,0,0)) StorageSlice;
+	
+	/** The type of a matrix view (i.e. the return type of view( rowStart, colStart, rowEnd, colEnd )). */
+	alias BasicMatrix!( StorageView ) View;
+	
+	/** The type of a matrix slice (i.e. the return type of slice( rowStart, colStart, rowEnd, colEnd )). */
+	alias BasicMatrix!( StorageSlice ) Slice;
+	
+	/** Inherit any special functionality from the storage type. */
+	alias storage this;
+	
+	/** Whether the matrix is row major or not. Shorthand for checking the storageOrder member. */
+	enum isRowMajor = ( storageOrder == StorageOrder.RowMajor );
+	
+	/** Whether the storage can be resized. */
+	enum isResizable = is( typeof( Storage.init.resize(0,0) ) );
+	
+	/** The type obtained by transposing the matrix. If the storage doesn't define one then it's just typeof(this). */
+	static if( is( Storage.Transposed ) )
+		alias BasicMatrix!( Storage.Transposed ) Transposed;
+	else
+		alias typeof( this ) Transposed;
+	
+	/** The type of a temporary that can store the result of an expression that evaluates to typeof(this). If the storage doesn't define one then it's just typeof(this). */
+	static if( is( Storage.Temporary ) )
+		alias BasicMatrix!( Storage.Temporary ) Temporary;
+	else
+		alias typeof( this ) Temporary;
+	
+	/** The type returned by front() and back(). */
+	static if( isRowMajor )
+		alias RowView MajorView;
+	else
+		alias ColumnView MajorView;
+	
+	/** Promotions for matrices:
+	      - Promotes vectors to vectors of the promotion of the storages.
+	      - Promotes matrices to matrices of the promotion of the storages.
+	      - Promotes scalars to matrices of the promotion of the storage and the scalar type.
+	*/
+	template Promote( T ) {
+		static if( isScalar!T ) {
+			alias BasicMatrix!( Promotion!(Storage,T) ) Promote;
+		} else static if( isMatrix!T ) {
+			alias BasicMatrix!( Promotion!(Storage,T.Storage) ) Promote;
+		}
+	}
+	
+	/** Create a new matrix. Forwards the arguments to the storage type. */
+	this( A... )( A args ) if( A.length > 0 && !is( A[0] : Storage ) && !isMatrix!(A[0]) && !isExpression!(A[0]) ) {
+		storage = Storage( args );
+	}
+	
+	/** Create a new matrix as a copy of a matrix with the same or a different storage type. */
+	this( A )( BasicMatrix!A other ) {
+		static if( is( A : Storage ) ) storage = other.storage;
+		else                           storage.copy( other.storage );
+	}
+	
+	/** Create a new matrix that stores the result of an expression. */
+	this( Expr )( auto ref Expr expr ) if( isExpression!Expr ) {
+		this[] = expr;
+	}
+	
+	/** Create a new matrix from a given storage. */
+	this()( Storage stor ) {
+		storage = stor;
+	}
+	
+	/** Element access. Forwarded to the storage.index method. */
+	ElementType opIndex( size_t i, size_t j ) const {
+		return storage.index( i, j );
+	}
+	
+	/** Element access. Forwarded to the storage.indexAssign method. */
+	void opIndexAssign( ElementType rhs, size_t i, size_t j ) {
+		storage.indexAssign( rhs, i, j );
+	}
+	
+	/** Element access. Forwarded to the storage.indexAssign!op method. */
+	void opIndexOpAssign( string op )( ElementType rhs, size_t i, size_t j ) {
+		storage.indexAssign!op( rhs, i, j );	
+	}
+	
+	/** Get a view of the matrix. Forwarded to the storage.view method. */
+	View view( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd ) {
+		return typeof( return )( storage.view( rowStart, rowEnd, colStart, colEnd ) );
+	}
+	
+	/** Matrix slicing. Forwarded to the storage.slice method. */
+	Slice slice( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd ) {
+		return typeof( return )( storage.slice( rowStart, rowEnd, colStart, colEnd ) );
+	}
+	
+	/** Get a view of the i'th row. Forwarded to the storage.row method. */
+	RowView row( size_t i ) {
+		return storage.row( i );
+	}
+	
+	/** Get a view of the j'th column. Forwarded to the storage.column method. */
+	ColumnView column( size_t j ) {
+		return storage.column( j );	
+	}
+	
+	/** Get a view of a slice of the i'th row. Forwarded to the storage.rowSlice method if available.
+	    Otherwise forward to storage.row(i)[ start .. end ].
+	*/
+	auto rowSlice( size_t i, size_t start, size_t end ) {
+		static if( is(typeof(storage.rowSlice( i, start, end ))) )
+			return storage.rowSlice( i, start, end );
+		else
+			return storage.row(i)[ start .. end ];
+	}
+	
+	/** Get a view of a slice of the j'th column. Forwarded to the storage.columnSlice method if available.
+	    Otherwise forward to storage.column(i)[ start .. end ].
+	*/
+	auto columnSlice( size_t i, size_t start, size_t end ) {
+		static if( is(typeof(storage.columnSlice( i, start, end ))) ) {
+			return storage.columnSlice( i, start, end );
+		} else
+			return storage.column(i)[ start .. end ];
+	}
+	
+	/** Same as row(i). This is to allow a consistent slicing syntax. */
+	RowView opIndex( size_t i ) {
+		return row( i );
+	}
+	
+	/** Start a slice operation. Select all rows. */
+	SliceProxy_ opSlice() {
+		return typeof(return)( this, 0, this.rows );
+	}
+	
+	/** Start a slice operation. Select rows from rowStart to rowEnd (not included). */
+	SliceProxy_ opSlice( size_t rowStart, size_t rowEnd ) {
+		return typeof(return)( this, rowStart, rowEnd );
+	}
+	
+	/** Assign the result of a matrix operation to this one. opAssign is not used due to a bug. */
+	void opSliceAssign(Rhs)( auto ref Rhs rhs ) {
+		static if( is( Rhs E : E[][] ) && isConvertible!(E, ElementType) )
+			evalCopy( BasicMatrix( rhs ), this );
+		else static if( closureOf!Rhs == Closure.Scalar )
+			evalCopy( relatedConstant( rhs, this ), this );
+		else 
+			evalCopy( rhs, this );	
+	}
+	
+	/// ditto
+	void opSliceOpAssign( string op, Rhs )( auto ref Rhs rhs ) if( op == "+" || op == "-" || op == "*" || op == "/" ) {
+		enum scalarRhs = closureOf!Rhs == Closure.Scalar;
+	
+		static if( op == "+" ) {
+			static if( scalarRhs ) evalScaledAddition( One!ElementType, relatedConstant(rhs, this), this );
+			else                   evalScaledAddition( One!ElementType, rhs, this );
+		} else static if( op == "-" ) {
+			static if( scalarRhs ) evalScaledAddition( One!ElementType, relatedConstant(-rhs, this), this );
+			else                   evalScaledAddition( MinusOne!ElementType, rhs, this );
+		} else static if( op == "*" ) {
+			static if( closureOf!Rhs == Closure.Matrix )
+				this[] = this * rhs;
+			else {
+				static assert( scalarRhs, "Matrix multiplication with invalid type " ~ Rhs.stringof );
+				evalScaling( rhs, this );
+			}
+		} else /* static if ( op == "/" ) */ {
+			static assert( isConvertible!(Rhs, ElementType), "Matrix division with invalid type " ~ Rhs.stringof );
+			evalScaling( One!ElementType / to!ElementType(rhs), this );
+		}
+	}
+	
+	/** Resize the matrix and leave the memory uninitialized. If not resizeable simply check that the dimensions are
+	    correct.
+	*/
+	void resize( size_t newRows, size_t newColumns, void* ) {
+		static if( isResizable ) {
+			storage.resize( newRows, newColumns, null );
+		} else {
+			assert( rows == newRows && columns == newColumns,
+				dimMismatch_( newRows, newColumns ) );
+		}
+	}
+	
+	/** Resize the matrix and set all the elements to zero. If not resizeable, check that the dimensions are correct
+	    and just set the elements to zero.
+	*/
+	void resize( size_t newRows, size_t newColumns ) {
+		static if( isResizable ) {
+			storage.resize( newRows, newColumns );
+		} else {
+			this.resize( newRows, newColumns, null );
+			evalScaling( Zero!ElementType, this );
+		}
+	}
+	
+	/** If provided, forward popFront() to the storage type. */
+	static if( is( typeof( Storage.init.popFront() ) ) )
+		void popFront() { storage.popFront(); }
+	
+	/** If provided, forward popBack() to the storage type. */
+	static if( is( typeof( Storage.init.popBack() ) ) )
+		void popBack()  { storage.popBack(); }
+			
+	@property {		
+		/** Return the first row for row-major matrices or the first column for column-major matrices. */
+		MajorView front()
+		in {
+			assert( !empty(), msgPrefix_ ~ "front on empty." );
+		} body {
+			static if( isRowMajor )
+				return storage.row( 0 );
+			else
+				return storage.column( 0 );
+		}
+		
+		/** Return the last row for row-major matrices or the last column for column-major matrices. */
+		MajorView back()
+		in {
+			assert( !empty(), msgPrefix_ ~ "back on empty." );
+		} body {
+			static if( isRowMajor )
+				return storage.row( storage.rows - 1 );
+			else
+				return storage.column( storage.columns - 1 );
+		}
+		
+		/** Return the number of rows of the matrix. */
+		size_t rows() const {
+			static if( is(typeof(Storage.init.rows) ) )
+				return storage.rows;
+			else static if( is(typeof(Storage.init.size) ) )
+				return storage.size;
+			else
+				static assert( false, "Matrix storage " ~ Storage.stringof ~ " doesn't define define dimensions." );
+		}
+		
+		/** Return the number of columns of the matrix. */
+		size_t columns() const {
+			static if( is(typeof(Storage.init.columns) ) )
+				return storage.columns;
+			else static if( is(typeof(Storage.init.size) ) )
+				return storage.size;
+			else
+				static assert( false, "Matrix storage " ~ Storage.stringof ~ " doesn't define define dimensions." );
+		}
+		
+		/** Return the major dimension of the matrix. */
+		size_t major() const {
+			static if( isRowMajor )
+				return storage.rows;
+			else
+				return storage.columns;
+		}
+		
+		/** Return the minor dimension of the matrix. */
+		size_t minor() const {
+			static if( isRowMajor )
+				return storage.columns;
+			else
+				return storage.rows;
+		}
+		
+		/** For square matrices return the size of the matrix. */
+		static if( is(typeof(Storage.init.size)) ) {
+			size_t size() const {
+				return storage.size;
+			}
+		}
+		
+		/** Has the matrix zero dimensions. */
+		bool empty() const {
+			return major == 0;
+		}
+		
+		/** The number of rows or columns of the matrix depending on the storage order. */
+		size_t length() const {
+			return this.major;
+		}
+		
+		/** (Somewhat) Nicely formatted matrix output. */
+		string pretty() const {
+			if( this.rows == 0 || this.columns == 0 )
+				return "[]";
+		
+			auto app = appender!string();
+			app.put("[ ");
+		
+			void putRow( size_t r ) {
+				app.put( to!string( this[r, 0] ) );
+				for( int i = 1; i < this.columns ; ++ i ) {
+					app.put( '\t' );
+					app.put( to!string( this[r, i] ) );
+				}
+			};
+		
+			auto last = this.rows - 1;
+			for( auto i = 0; i < last ; ++ i ) {
+				putRow( i );
+				app.put( ";\n  " );
+			}
+		
+			putRow( last );
+			app.put(" ]");
 
+			return app.data;
+		}
+	}
+	
+	/** In line matrix output. */
+	string toString() const {
+		if( this.rows == 0 || this.columns == 0 )
+			return "[]";
+		
+		auto app = appender!string();
+		app.put('[');
+		
+		void putRow( size_t r ) {
+			app.put( '[' );
+			app.put( to!string( this[r, 0] ) );
+			for( int i = 1; i < this.columns ; ++ i ) {
+				app.put( ", " );
+				app.put( to!string( this[r, i] ) );
+			}
+			app.put( ']' );
+		};
+		
+		auto last = this.rows - 1;
+		for( auto i = 0; i < last ; ++ i ) {
+			putRow( i );
+			app.put( ", " );
+		}
+		
+		putRow( last );
+		app.put("]");
 
-/** This struct provides a matrix-like view of the contents of an
-    array. In order to be compatible with LAPACK routines, it supports
-    the following matrix representations (i.e. memory layouts).
-    
-    General_matrices:
-    The elements of dense matrices are stored in column-major order.
-    This means that if the wrapped array contains the elements
-    ---
-    a b c d e f g h i j k l
-    ---
-    then a 3x4 dense matrix view of this array looks like this:
-    ---
-    a d g j
-    b e h k
-    c f i l
-    ---
-
-    Triangular_matrices:
-    Triangular matrices are required to be square. If the wrapped
-    array contains the six elements
-    ---
-    a b c d e f
-    ---
-    then the resulting 3x3 upper and lower triangular matrix views
-    will look like this, respectively:
-    ---
-    a b d         a 0 0
-    0 c e   and   b d 0
-    0 0 f         c e f
-    ---
-
-    Symmetric_matrices:
-    Symmetric matrices are stored in the same way as triangular
-    matrices. This means that for the array above, the corresponding
-    symmetric matrix view will be
-    ---
-    a b d       a b c
-    b c e   or  b d c
-    d e f       c e f
-    ---
-    depending on whether the upper or lower triangle is stored.
-
-    Hermitian_matrices:
-    Hermitian matrices are not implemented yet.
-
-    See_also:
-    LAPACK User's Guide: Matrix storage schemes, 
-    $(LINK http://www.netlib.org/lapack/lug/node121.html)
-*/
-struct MatrixView (T, Storage stor = Storage.General,
-    Triangle tri = Triangle.Upper)
-{
-    enum Storage storage = stor;
-    enum Triangle triangle = tri;
-
+		return app.data;
+	}
+	
+	/** The wrapped storage object. */
+	Storage storage;
+	
+	/** Include operator overloads for matrices. */
+	mixin Operand!( Closure.Matrix );
+	
+	/** Proxy type used for slicing operations. Returned after the first slicing is performed. */
+	static struct SliceProxy_ {
+		alias BasicMatrix MatrixType;
+		alias Storage     StorageType;
+		
+		BasicMatrix m_;
+		size_t  start_, end_;
+		
+		this( ref BasicMatrix mat, size_t start, size_t end ) {
+			m_.storage.forceRefAssign( mat.storage );
+			start_ = start; end_ = end;
+		}
+		
+		Slice      opSlice()                       { return m_.slice( start_, end_, 0, m_.columns ); }
+		Slice      opSlice( size_t j1, size_t j2 ) { return m_.slice( start_, end_, j1, j2 ); }
+		ColumnView opIndex( size_t j )             { return m_.columnSlice( j, start_, end_ ); }
+		
+		void opSliceAssign( Rhs )( auto ref Rhs rhs ) {
+			m_.view( start_, end_, 0, m_.columns )[] = rhs;
+		}
+		
+		void opSliceAssign( Rhs )( auto ref Rhs rhs, size_t j1, size_t j2 ) {
+			m_.view( start_, end_, j1, j2 )[] = rhs;
+		}
+		
+		void opSliceOpAssign( string op, Rhs )( auto ref Rhs rhs ) {
+			m_.view( start_, end_, 0, m_.columns ).opSliceOpAssign!op( rhs );
+		}
+		
+		void opSliceOpAssign( string op, Rhs )( auto ref Rhs rhs, size_t j1, size_t j2 ) {
+			m_.view( start_, end_, j1, j2 ).opSliceOpAssign!op( rhs );
+		}
+		
+		void opIndexAssign( Rhs )( auto ref Rhs rhs, size_t j ) {
+			this[ j ].opSliceAssign( rhs );
+		}
+		
+		void opIndexOpAssign( string op, Rhs )( auto ref Rhs rhs, size_t j ) {
+			this[ j ].opSliceOpAssign!op( rhs );
+		}
+		
+		void popFront()
+		in {
+			assert( !empty,	"popFront on empty" );
+		} body {
+			++ start_;	
+		}
+		
+		@property {
+			bool empty() const { return start_ == m_.major; }
+			
+			MajorView  front() {
+				static if( isRowMajor ) return m_.row( start_ );
+				else                    return m_.column( start_ );
+			}
+			
+		}	
+	}
+	
 private:
-    // Writing fully-qualified names in static ifs gets tiresome, so
-    // we introduce a few flags.
-    enum : bool
-    {
-        isGen   = (storage == Storage.General),
-        isTri   = (storage == Storage.Triangular),
-        isUpTri = (isTri && triangle == Triangle.Upper),
-        isLoTri = (isTri && triangle == Triangle.Lower),
-        isSym   = (storage == Storage.Symmetric),
-        isUpSym = (isSym && triangle == Triangle.Upper),
-        isLoSym = (isSym && triangle == Triangle.Lower),
-    }
-
-
-    static if (!isGen)
-    {
-        static assert (isNumeric!T || isComplex!T,
-            "MatrixView: Non-general matrices can only contain numeric values. "
-           ~"Non-appropriate type given: "~T.stringof);
-    }
-
-    // The zero element in triangular matrices.
-    static if (isTri)
-    {
-        T zero = Zero!T;
-    }
-
-
-public:
-    /** The array that is wrapped by this MatrixView. */
-    T[] array;
-
-
-    /** The number of rows in the matrix. */
-    size_t rows;
-
-    /** The number of columns in the matrix. */
-    size_t cols;
-
-    /** The leading (row) dimension.  Included to support matrix slicing,
-        currently just an alias to rows.
-    */
-    alias rows leading;
-
-
-
-    /** Wrap a MatrixView with m rows around the given array.
-        
-        For general matrices, the number of columns in the matrix
-        is set to a.length/m, whereas for triangular and symmetric
-        matrices the number of columns is set equal to the number
-        of rows.
-    */
-    this (T[] a, size_t m)  pure nothrow
-    in
-    {
-        static if (isGen)  assert (a.length % m == 0);
-    }
-    body
-    {
-        static if (isGen)  this (a, m, a.length/m);
-        else static if (isTri || isSym)  this(a, m, m);
-    }
-
-
-
-    /** Wrap a MatrixView with m rows and n columns around the given array.
-        For a given set of a, m, and n, the following must be true for
-        a general matrix:
-        ---
-        a.length >= m*n
-        ---
-        For triangular and symmetric matrices, there are two constraints:
-        ---
-        m == n
-        a.length >= (n*n + n)/2
-        ---
-        These conditions are only checked in non-release builds.
-    */
-    this (T[] a, size_t m, size_t n) pure nothrow
-    in
-    {
-        static if (isGen)
-            assert (a.length >= m*n);
-        else static if (isTri || isSym)
-        {
-            assert (m == n);
-            assert (a.length >= (n*n + n)/2);
-        }
-    }
-    body
-    {
-        array = a;
-        rows = m;
-        cols = n;
-    }
-
-
-
-    /** Return (a reference to) the element at row i, column j.
-
-        Warning:
-        For convenience, this method returns values by reference. This
-        means that one can do stuff like this:
-        ---
-        m[1,2] += 3.14;
-        ---
-        Unfortunately, it also means that in a triangular matrix one
-        can change the zero element (which is common for all zero elements).
-        ---
-        assert ((m[1,0] == 0.0)  &&  m[2,0] == 0.0);
-        m[1,0] += 3.14;
-        assert (m[2,0] == 3.14);    // passes
-        ---
-        You are hereby warned.
-    */
-    ref T opIndex(size_t i, size_t j) pure nothrow
-    in
-    {
-        assert (i < rows  &&  j < cols);
-    }
-    body
-    {
-        static if (isGen)
-            return array.ptr[i + rows*j];
-        else static if (isUpTri)
-        {
-            if (i <= j)  return array.ptr[i + (j*j+j)/2];
-            else return zero;
-        }
-        else static if (isLoTri)
-        {
-            if (i >= j)  return array.ptr[i + ((rows+rows-j-1)*j)/2];
-            else return zero;
-        }
-        else static if (isUpSym)
-        {
-            if (i <= j)  return array.ptr[i + (j*j+j)/2];
-            else return array.ptr[j + (i*i+i)/2];
-        }
-        else static if (isLoSym)
-        {
-            if (i >= j)  return array.ptr[i + ((rows+rows-j-1)*j)/2];
-            else return array.ptr[j + ((rows+rows-i-1)*i)/2];
-        }
-        else static assert (false);
-    }
-
-
-    /** Assign a value to the element at row i, column j.
-        
-        Unlike opIndex(), this method checks that zero elements in
-        a triangular matrix aren't assigned to, but only in non-release
-        builds.
-    */
-    T opIndexAssign(T value, size_t i, size_t j) nothrow
-    in
-    {
-        assert (i < rows  &&  j < cols);
-        static if (isUpTri)  assert (i <= j);
-        static if (isLoTri)  assert (i >= j);
-    }
-    body
-    {
-        static if (isGen)
-            return array.ptr[i + rows*j] = value;
-        else static if (isUpTri)
-            return array.ptr[i + (j*j+j)/2] = value;
-        else static if (isLoTri)
-            return array.ptr[i + ((rows+rows-j-1)*j)/2] = value;
-        else static if (isUpSym)
-        {
-            if (i <= j)  return array.ptr[i + (j*j+j)/2] = value;
-            else  return array.ptr[j + (i*i+i)/2] = value;
-        }
-        else static if (isLoSym)
-        {
-            if (i >= j)  return array.ptr[i + ((rows+rows-j-1)*j)/2] = value;
-            else return array.ptr[j + ((rows+rows-i-1)*i)/2] = value;
-        }
-        else static assert (false);
-    }
+	mixin MatrixErrorMessages;
 }
 
-unittest
-{
-    alias MatrixView!real GeneralMatrix;
-    real[] g = [1.0L, 2, 3, 4, 5, 6];
-
-    auto gm1 = GeneralMatrix(g, 2);
-    auto gm2 = GeneralMatrix(g, 3);
-
-    check (gm1.cols == 3);
-    check (gm2.cols == 2);
-
-    check (gm1[1,0] == 2);
-    check (gm2[1,0] == 2);
-
-    check (gm1[1,1] == 4);
-    check (gm2[1,1] == 5);
-
-    gm2[1,1] += 1; check (gm2[1,1] == 6);
-    gm2[1,1] = 10; check (gm2[1,1] == 10);
-
-
-    alias MatrixView!(real, Storage.Triangular) UTMatrix;
-    real[] u = [1.0, 2, 3, 4, 5, 6];
-    
-    auto um1 = UTMatrix(u, 3);
-    check (um1.cols == 3);
-    check (um1[1,0] == 0.0);
-    check (um1[1,1] == 3.0);
-    um1[0,2] += 3; check (u[3] == 7);
-    um1[2,2] = 10; check (u[5] == 10);
-
-
-    alias MatrixView!(real, Storage.Triangular, Triangle.Lower) LTMatrix;
-    real[] l = [1.0, 2, 3, 4, 5, 6];
-    
-    auto lm1 = LTMatrix(l, 3);
-    check (lm1.cols == 3);
-    check (lm1[0,1] == 0.0);
-    check (lm1[1,1] == 4.0);
-    lm1[2,0] += 4; check (l[2] == 7);
-    lm1[2,2] = 10; check (l[5] == 10);
-
-
-    alias MatrixView!(real, Storage.Symmetric) USMatrix;
-    real[] us = [1.0, 2, 3, 4, 5, 6];
-    
-    auto usm1 = USMatrix(us, 3);
-    check (usm1.cols == 3);
-    check (usm1[1,2] == 5.0);
-    foreach (i; 0 .. usm1.rows)
-        foreach (j; 0 .. i)
-            check (usm1[i,j] == usm1[j,i]);
-    usm1[0,2] += 3; check (usm1[2,0] == 7);
-    usm1[1,2] = 10; check (usm1[2,1] == 10);
-
-
-    alias MatrixView!(real, Storage.Symmetric, Triangle.Lower) LSMatrix;
-    real[] ls = [1.0, 2, 3, 4, 5, 6];
-    
-    auto lsm1 = LSMatrix(ls, 3);
-    check (lsm1.cols == 3);
-    check (lsm1[1,2] == 5.0);
-    foreach (i; 0 .. lsm1.rows)
-        foreach (j; 0 .. i)
-            check (lsm1[i,j] == lsm1[j,i]);
-    lsm1[0,2] += 3; check (lsm1[2,0] == 6);
-    lsm1[1,2] = 10; check (lsm1[2,1] == 10);
+/** Matrix inversion. */
+Expression!( "inv", M ) inv( M )( auto ref M matrix ) if( closureOf!M == Closure.Matrix ) {
+	return typeof( return )( matrix );	
 }
 
 
-
-
-/** Evaluates to true if the given type is an instantiation of
-    MatrixView. Optionally test the element type and/or storage
-    scheme.
-*/
-template isMatrixView(MatrixT)
-{
-    static if (is(MatrixT E == MatrixView!(E, S, T), int S, char T))
-    {
-        enum bool isMatrixView = true;
-    }
-    else enum bool isMatrixView = false;
-}
-
-version(unittest)
-{
-    static assert (isMatrixView!(MatrixView!int));
-    static assert (!isMatrixView!int);
+version( unittest ) {
+	import std.stdio;
+	import scid.storage.cowmatrix;
+	import scid.vector;
 }
 
 
-/// ditto
-template isMatrixView(MatrixT, ElemT)
-{
-    static if (is(MatrixT E == MatrixView!(E, S, T), int S, char T))
-    {
-        enum bool isMatrixView = is(E == ElemT);
-    }
-    else enum bool isMatrixView = false;
+//------------------------------------- Tests for General Matrices -------------------------------------//
+unittest {
+	alias Matrix!( double, StorageOrder.RowMajor    ) RowMat;
+	alias Matrix!( double, StorageOrder.ColumnMajor ) ColMat;
+	
+	static assert( is( Matrix!double : ColMat ) );
+	static assert( !is( Matrix!int ) );
+	static assert( is( Matrix!( GeneralMatrixStorage!(CowMatrixRef!double) ) : ColMat ) );
+
+	// empty matrix;
+	{
+		RowMat a;
+		ColMat b;
+		
+		// assert( a.rows == 0 && a.columns == 0 );
+		// assert( b.rows == 0 && b.columns == 0 );
+		// ops on it are undefined //
+	}
+	
+	// matrix ctors
+	{
+		auto a = ColMat(3,6);
+		auto b = RowMat(5,4, null);
+		auto c = ColMat(3, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] );
+		auto d = RowMat(3, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] );
+		
+		assert( a.rows == 3 && a.columns == 6 );
+		assert( b.rows == 5 && b.columns == 4 );
+		assert( c.rows == 3 && c.columns == 3 );
+		assert( d.rows == 3 && d.columns == 3 );
+		
+		foreach( i ; 0 .. 3 )
+			foreach( j ; 0 .. 6 )
+				assert( a[ i, j ] == 0.0 );
+		
+		writeln( c.pretty );
+		double k = 1.0;
+		foreach( i ; 0 .. 3 )
+			foreach( j ; 0 .. 3 ) {
+				assert( c[ j, i ] == k );
+				assert( d[ i, j ] == k );
+				k ++;
+			}
+	}
+	
+	// copy-on-write
+	void cowTest( Mat )() {
+		auto a = Mat( 3, 3 );
+		auto b = a;
+		Mat c; c = b;
+		b[ 0, 0 ] =  1.0;
+		c[ 0, 0 ] += 2.0;
+		assert( a[ 0, 0 ] == 0.0 && b[ 0, 0 ] == 1.0 && c[ 0, 0 ] == 2.0 );
+	}
+	
+	cowTest!RowMat();
+	cowTest!ColMat();
+	
+	// row/column indexing
+	void rowColTest( Mat )() {
+		auto a = Mat( 3, 5 );
+		
+		double k = 0.0;
+		foreach( i ; 0 .. a.rows )
+			foreach( j ; 0 .. a.columns )
+				a[ i, j ] = k ++;
+		
+		foreach( i ; 0 .. a.rows ) {
+			auto v1 = a.row( i );
+			auto v2 = a[ i ][];
+			
+			static assert( v1.vectorType == VectorType.Row );
+			static assert( v2.vectorType == VectorType.Row );
+			assert( v1.length == a.columns && v2.length == a.columns );
+			
+			foreach( j ; 0 .. a.columns )
+				assert( v1[ j ] == v2[ j ] && v1[ j ] == i * a.columns + j );
+		}
+		
+		foreach( j ; 0 .. a.columns ) {
+			auto v1 = a.column( j );
+			auto v2 = a[][ j ];
+			
+			static assert( v1.vectorType == VectorType.Column );
+			static assert( v2.vectorType == VectorType.Column );
+			assert( v1.length == a.rows && v2.length == a.rows );
+			
+			foreach( i ; 0 .. a.rows )
+				assert( v1[ i ] == v2[ i ] && v1[ i ] == i * a.columns + j );
+		}
+		
+		foreach( i ; 0 .. a.rows ) {
+			auto v = a[ i ][];
+			v[] *= 2.0;
+		}
+		
+		k = 0.0;
+		foreach( i ; 0 .. a.rows )
+			foreach( j ; 0 .. a.columns ) {
+				assert( a[ i, j ] == k );
+				k += 2.0;
+			}
+	}
+	
+	rowColTest!RowMat();
+	rowColTest!ColMat();
+	
+	// slices & views tests
+	void sliceTest( Mat )() {
+		auto a = Mat( 3, 5 );
+		
+		double k = 0.0;
+		foreach( i ; 0 .. a.rows )
+			foreach( j ; 0 .. a.columns )
+				a[ i, j ] = ++ k;
+		
+		
+		auto p = a[0..2][3..5];
+		assert( p.rows == 2 && p.columns == 2 );
+		assert( p[0, 0] == 4.0 && p[0, 1] == 5.0 &&
+			    p[1, 0] == 9.0 && p[1, 1] == 10.0 );
+		
+		p[ 0, 0 ] = 42.0;
+		assert( a[ 0, 3 ] == 4.0 && p[ 0, 0 ] == 42.0 );
+		
+		auto q = a.view( 1, 3, 2, 5 ); 
+		auto r = q[ 0 .. 2 ][ 0 .. 3 ];
+		assert( q.rows == 2 && q.columns == 3 );
+		foreach( i ; 0 .. q.rows )
+			foreach( j ; 0 .. q.columns )
+				assert( q[ i, j ] == r[  i, j ] );
+		
+		q[ 0, 0 ] = 42.0;
+		assert( a[ 1, 2 ] == 42.0 && q[ 0, 0 ] == 42.0 && r[ 0, 0 ] == 42.0 );
+	}
+	
+	sliceTest!RowMat();
+	sliceTest!ColMat();
+	
+	// range of ranges interface
+	void rangeTest(Mat)() {
+		auto a = Mat( 3, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] );
+		auto m = [ [1.0, 2.0], [3.0, 4.0], [5.0, 6.0] ];
+		
+		uint k = 0;
+		foreach( vec ; a ) {
+		    assert( m[ k ][ 0 ] == vec[ 0 ] && m[ k ][ 1 ] == vec[ 1 ] );
+		    ++k;
+		}
+		
+		k = 0;
+		foreach( vec ; a[0..2][] ) {
+		    assert( m[ k ][ 0 ] == vec[ 0 ] && m[ k ][ 1 ] == vec[ 1 ] );
+		    ++k;
+		}
+	}
+	
+	rangeTest!RowMat();
+	rangeTest!ColMat();
 }
 
-version(unittest)
-{
-    static assert (isMatrixView!(MatrixView!int, int));
-    static assert (!isMatrixView!(MatrixView!int, float));
+//------------------------------------ Tests for Triangular Matrices -----------------------------------//
+unittest {
+	alias TriangularMatrix!( double, MatrixTriangle.Upper, StorageOrder.RowMajor    ) RowUpMat;
+	alias TriangularMatrix!( double, MatrixTriangle.Upper, StorageOrder.ColumnMajor ) ColUpMat;
+	alias TriangularMatrix!( double, MatrixTriangle.Lower, StorageOrder.RowMajor    ) RowLoMat;
+	alias TriangularMatrix!( double, MatrixTriangle.Lower, StorageOrder.ColumnMajor ) ColLoMat;
+	
+	static assert( is( TriangularMatrix!double : ColUpMat ) );
+	static assert( !is( TriangularMatrix!int ) );
+
+	// empty matrix;
+	{
+		RowUpMat a;
+		ColUpMat b;
+		
+		// assert( a.rows == 0 && a.columns == 0 );
+		// assert( b.rows == 0 && b.columns == 0 );
+		// ops on it are undefined //
+	}
+	
+	// matrix ctors
+	{
+		auto cu = ColUpMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto ru = RowUpMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto cl = ColLoMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto rl = RowLoMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		
+		assert( cu.size == 3 && ru.size == 3 && cl.size == 3 && rl.size == 3 );
+		
+		assert( cu[ 0, 0 ] == 1.0 && cu[ 0, 1 ] == 2.0 && cu[ 0, 2 ] == 4.0 &&
+			    cu[ 1, 0 ] == 0.0 && cu[ 1, 1 ] == 3.0 && cu[ 1, 2 ] == 5.0 &&
+			    cu[ 2, 0 ] == 0.0 && cu[ 2, 1 ] == 0.0 && cu[ 2, 2 ] == 6.0 );
+		
+		assert( ru[ 0, 0 ] == 1.0 && ru[ 0, 1 ] == 2.0 && ru[ 0, 2 ] == 3.0 &&
+			    ru[ 1, 0 ] == 0.0 && ru[ 1, 1 ] == 4.0 && ru[ 1, 2 ] == 5.0 &&
+			    ru[ 2, 0 ] == 0.0 && ru[ 2, 1 ] == 0.0 && ru[ 2, 2 ] == 6.0 );
+		
+		assert( cl[ 0, 0 ] == 1.0 && cl[ 0, 1 ] == 0.0 && cl[ 0, 2 ] == 0.0 &&
+			    cl[ 1, 0 ] == 2.0 && cl[ 1, 1 ] == 4.0 && cl[ 1, 2 ] == 0.0 &&
+			    cl[ 2, 0 ] == 3.0 && cl[ 2, 1 ] == 5.0 && cl[ 2, 2 ] == 6.0 );
+		
+		assert( rl[ 0, 0 ] == 1.0 && rl[ 0, 1 ] == 0.0 && rl[ 0, 2 ] == 0.0 &&
+			    rl[ 1, 0 ] == 2.0 && rl[ 1, 1 ] == 3.0 && rl[ 1, 2 ] == 0.0 &&
+			    rl[ 2, 0 ] == 4.0 && rl[ 2, 1 ] == 5.0 && rl[ 2, 2 ] == 6.0 );
+		
+	}
+	
+	// copy-on-write
+	void cowTest( Mat )() {
+		auto a = Mat( 3 );
+		auto b = a;
+		Mat c; c = b;
+		b[ 0, 0 ] =  1.0;
+		c[ 0, 0 ] += 2.0;
+		assert( a[ 0, 0 ] == 0.0 && b[ 0, 0 ] == 1.0 && c[ 0, 0 ] == 2.0 );
+	}
+	
+	cowTest!RowUpMat();
+	cowTest!ColUpMat();
+	cowTest!RowLoMat();
+	cowTest!ColLoMat();
+	
+	// row/column indexing
+	{
+		auto cu = ColUpMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto ru = RowUpMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto cl = ColLoMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto rl = RowLoMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		
+		{
+			auto r = cu.row( 2 );
+			r[] *= 2.0;
+		}
+		
+		assert( cu[ 0, 0 ] == 1.0 && cu[ 0, 1 ] == 2.0 && cu[ 0, 2 ] == 4.0 &&
+			    cu[ 1, 0 ] == 0.0 && cu[ 1, 1 ] == 3.0 && cu[ 1, 2 ] == 5.0 &&
+			    cu[ 2, 0 ] == 0.0 && cu[ 2, 1 ] == 0.0 && cu[ 2, 2 ] == 12.0 );
+
+		{
+			auto r = ru.column( 1 );
+			r[] *= 2.0;
+		}
+		
+		assert( ru[ 0, 0 ] == 1.0 && ru[ 0, 1 ] == 4.0 && ru[ 0, 2 ] == 3.0 &&
+			    ru[ 1, 0 ] == 0.0 && ru[ 1, 1 ] == 8.0 && ru[ 1, 2 ] == 5.0 &&
+			    ru[ 2, 0 ] == 0.0 && ru[ 2, 1 ] == 0.0 && ru[ 2, 2 ] == 6.0 );
+		
+		cl[][1] = [9.0,8.0,7.0];
+		assert( cl[ 0, 0 ] == 1.0 && cl[ 0, 1 ] == 0.0 && cl[ 0, 2 ] == 0.0 &&
+			    cl[ 1, 0 ] == 2.0 && cl[ 1, 1 ] == 8.0 && cl[ 1, 2 ] == 0.0 &&
+			    cl[ 2, 0 ] == 3.0 && cl[ 2, 1 ] == 7.0 && cl[ 2, 2 ] == 6.0 );
+		
+		rl[1][] = [9.0,8.0,7.0].t;
+		assert( rl[ 0, 0 ] == 1.0 && rl[ 0, 1 ] == 0.0 && rl[ 0, 2 ] == 0.0 &&
+			    rl[ 1, 0 ] == 9.0 && rl[ 1, 1 ] == 8.0 && rl[ 1, 2 ] == 0.0 &&
+			    rl[ 2, 0 ] == 4.0 && rl[ 2, 1 ] == 5.0 && rl[ 2, 2 ] == 6.0 );
+		
+	}
+	
+	// slices & views tests
+	{
+		auto a = ColUpMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		
+		auto p = a[0..2][1..3];
+		assert( p.rows == 2 && p.columns == 2 );
+		assert( p[0, 0] == 2.0 && p[0, 1] == 4.0 &&
+			    p[1, 0] == 3.0 && p[1, 1] == 5.0 );
+		
+		p[ 0, 0 ] = 42.0;
+		assert( a[ 0, 1 ] == 2.0 && p[ 0, 0 ] == 42.0 );
+		
+		auto q = a.view( 1, 3, 0, 3 ); 
+		auto r = q[ 0 .. 2 ][ 0 .. 3 ];
+
+		assert( q.rows == 2 && q.columns == 3 );
+		foreach( i ; 0 .. q.rows )
+			foreach( j ; 0 .. q.columns )
+				assert( q[ i, j ] == r[  i, j ] );
+		
+		q[ 0, 1 ] = 42.0;
+		assert( a[ 1, 1 ] == 42.0 && q[ 0, 1 ] == 42.0 && r[ 0, 1 ] == 42.0 );
+	}
+	
+	// range of ranges interface
+	{
+		auto a = RowLoMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] );
+		auto m = [ [1.0, 0.0, 0.0], [2.0, 3.0, 0.0], [4.0, 5.0, 6.0] ];
+		
+		uint k = 0;
+		foreach( vec ; a ) {
+			assert( m[ k ][ 0 ] == vec[ 0 ] && m[ k ][ 1 ] == vec[ 1 ] );
+			++ k;
+		}
+		
+		k = 0;
+		foreach( vec ; a[0..2][] ) {
+			assert( m[ k ][ 0 ] == vec[ 0 ] && m[ k ][ 1 ] == vec[ 1 ] );
+			++ k;
+		}
+	}
 }
 
+//------------------------------------- Tests for Symmetric Matrices -----------------------------------//
+unittest {
+	alias SymmetricMatrix!( double, MatrixTriangle.Upper, StorageOrder.RowMajor    ) RowUpMat;
+	alias SymmetricMatrix!( double, MatrixTriangle.Upper, StorageOrder.ColumnMajor ) ColUpMat;
+	alias SymmetricMatrix!( double, MatrixTriangle.Lower, StorageOrder.RowMajor    ) RowLoMat;
+	alias SymmetricMatrix!( double, MatrixTriangle.Lower, StorageOrder.ColumnMajor ) ColLoMat;
+	
+	static assert( is( SymmetricMatrix!double : ColUpMat ) );
+	static assert( !is( SymmetricMatrix!int ) );
 
-/// ditto
-template isMatrixView(MatrixT, Storage stor)
-{
-    static if (is(MatrixT E == MatrixView!(E, S, T), int S, char T))
-    {
-        enum bool isMatrixView = S == stor;
-    }
-    else enum bool isMatrixView = false;
+	// empty matrix;
+	{
+		RowUpMat a;
+		ColUpMat b;
+		
+		// assert( a.rows == 0 && a.columns == 0 );
+		// assert( b.rows == 0 && b.columns == 0 );
+		// ops on it are undefined //
+	}
+	
+	// matrix ctors
+	{
+		auto cu = ColUpMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto ru = RowUpMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto cl = ColLoMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto rl = RowLoMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		
+		assert( cu.size == 3 && ru.size == 3 && cl.size == 3 && rl.size == 3 );
+		
+		assert( cu[ 0, 0 ] == 1.0 && cu[ 0, 1 ] == 2.0 && cu[ 0, 2 ] == 4.0 &&
+			    cu[ 1, 0 ] == 2.0 && cu[ 1, 1 ] == 3.0 && cu[ 1, 2 ] == 5.0 &&
+			    cu[ 2, 0 ] == 4.0 && cu[ 2, 1 ] == 5.0 && cu[ 2, 2 ] == 6.0 );
+		
+		assert( ru[ 0, 0 ] == 1.0 && ru[ 0, 1 ] == 2.0 && ru[ 0, 2 ] == 3.0 &&
+			    ru[ 1, 0 ] == 2.0 && ru[ 1, 1 ] == 4.0 && ru[ 1, 2 ] == 5.0 &&
+			    ru[ 2, 0 ] == 3.0 && ru[ 2, 1 ] == 5.0 && ru[ 2, 2 ] == 6.0 );
+		
+		assert( cl[ 0, 0 ] == 1.0 && cl[ 0, 1 ] == 2.0 && cl[ 0, 2 ] == 3.0 &&
+			    cl[ 1, 0 ] == 2.0 && cl[ 1, 1 ] == 4.0 && cl[ 1, 2 ] == 5.0 &&
+			    cl[ 2, 0 ] == 3.0 && cl[ 2, 1 ] == 5.0 && cl[ 2, 2 ] == 6.0 );
+		
+		assert( rl[ 0, 0 ] == 1.0 && rl[ 0, 1 ] == 2.0 && rl[ 0, 2 ] == 4.0 &&
+			    rl[ 1, 0 ] == 2.0 && rl[ 1, 1 ] == 3.0 && rl[ 1, 2 ] == 5.0 &&
+			    rl[ 2, 0 ] == 4.0 && rl[ 2, 1 ] == 5.0 && rl[ 2, 2 ] == 6.0 );
+		
+	}
+	
+	// copy-on-write
+	void cowTest( Mat )() {
+		auto a = Mat( 3 );
+		auto b = a;
+		Mat c; c = b;
+		b[ 0, 0 ] =  1.0;
+		c[ 0, 0 ] += 2.0;
+		assert( a[ 0, 0 ] == 0.0 && b[ 0, 0 ] == 1.0 && c[ 0, 0 ] == 2.0 );
+	}
+	
+	cowTest!RowUpMat();
+	cowTest!ColUpMat();
+	cowTest!RowLoMat();
+	cowTest!ColLoMat();
+	
+	// row/column indexing
+	{
+		auto cu = ColUpMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto ru = RowUpMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto cl = ColLoMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		auto rl = RowLoMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		
+		{
+			auto r = cu.row( 2 );
+			r[] *= 2.0;
+		}
+		
+		assert( cu[ 0, 0 ] == 1.0 && cu[ 0, 1 ] == 2.0 && cu[ 0, 2 ] == 4.0 &&
+			    cu[ 1, 0 ] == 2.0 && cu[ 1, 1 ] == 3.0 && cu[ 1, 2 ] == 5.0 &&
+			    cu[ 2, 0 ] == 4.0 && cu[ 2, 1 ] == 5.0 && cu[ 2, 2 ] == 12.0 );
+
+		{
+			auto r = ru.column( 1 );
+			r[] *= 2.0;
+		}
+		
+		assert( ru[ 0, 0 ] == 1.0 && ru[ 0, 1 ] == 4.0 && ru[ 0, 2 ] == 3.0 &&
+			    ru[ 1, 0 ] == 4.0 && ru[ 1, 1 ] == 8.0 && ru[ 1, 2 ] == 5.0 &&
+			    ru[ 2, 0 ] == 3.0 && ru[ 2, 1 ] == 5.0 && ru[ 2, 2 ] == 6.0 );
+		
+		cl[][1] = [9.0,8.0,7.0];
+		assert( cl[ 0, 0 ] == 1.0 && cl[ 0, 1 ] == 2.0 && cl[ 0, 2 ] == 3.0 &&
+			    cl[ 1, 0 ] == 2.0 && cl[ 1, 1 ] == 8.0 && cl[ 1, 2 ] == 7.0 &&
+			    cl[ 2, 0 ] == 3.0 && cl[ 2, 1 ] == 7.0 && cl[ 2, 2 ] == 6.0 );
+		
+		rl[1][] = [9.0,8.0,7.0].t;
+		assert( rl[ 0, 0 ] == 1.0 && rl[ 0, 1 ] == 9.0 && rl[ 0, 2 ] == 4.0 &&
+			    rl[ 1, 0 ] == 9.0 && rl[ 1, 1 ] == 8.0 && rl[ 1, 2 ] == 5.0 &&
+			    rl[ 2, 0 ] == 4.0 && rl[ 2, 1 ] == 5.0 && rl[ 2, 2 ] == 6.0 );
+		
+	}
+	
+	// slices & views tests
+	{
+		auto a = ColUpMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0 ] );
+		
+		auto p = a[0..2][1..3];
+		assert( p.rows == 2 && p.columns == 2 );
+		assert( p[0, 0] == 2.0 && p[0, 1] == 4.0 &&
+			    p[1, 0] == 3.0 && p[1, 1] == 5.0 );
+		
+		p[ 0, 0 ] = 42.0;
+		assert( a[ 0, 1 ] == 2.0 && p[ 0, 0 ] == 42.0 );
+		
+		auto q = a.view( 1, 3, 0, 3 ); 
+		auto r = q[ 0 .. 2 ][ 0 .. 3 ];
+
+		assert( q.rows == 2 && q.columns == 3 );
+		foreach( i ; 0 .. q.rows )
+			foreach( j ; 0 .. q.columns )
+				assert( q[ i, j ] == r[  i, j ] );
+		
+		q[ 0, 1 ] = 42.0;
+		assert( a[ 1, 1 ] == 42.0 && q[ 0, 1 ] == 42.0 && r[ 0, 1 ] == 42.0 );
+	}
+	
+	// range of ranges interface
+	{
+		auto a = RowLoMat( [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] );
+		auto m = [ [1.0, 2.0, 4.0], [2.0, 3.0, 5.0], [4.0, 5.0, 6.0] ];
+		
+		uint k = 0;
+		foreach( vec ; a ) {
+			assert( m[ k ][ 0 ] == vec[ 0 ] && m[ k ][ 1 ] == vec[ 1 ] );
+			++ k;
+		}
+		
+		k = 0;
+		foreach( vec ; a[0..2][] ) {
+			assert( m[ k ][ 0 ] == vec[ 0 ] && m[ k ][ 1 ] == vec[ 1 ] );
+			++ k;
+		}
+	}
 }
-
-version(unittest)
-{
-    static assert (isMatrixView!(
-        MatrixView!(int, Storage.Triangular),
-        Storage.Triangular));
-    static assert (!isMatrixView!(
-        MatrixView!(int, Storage.Triangular),
-        Storage.Symmetric));
-}
-
-
-/// ditto
-template isMatrixView(MatrixT, ElemT, Storage stor)
-{
-    static if (is(MatrixT E == MatrixView!(E, S, T), int S, char T))
-    {
-        enum bool isMatrixView = is(E == ElemT)  &&  S == stor;
-    }
-    else enum bool isMatrixView = false;
-}
-
-version(unittest)
-{
-    static assert (isMatrixView!(
-        MatrixView!(int, Storage.Triangular),
-        int, Storage.Triangular));
-    static assert (!isMatrixView!(
-        MatrixView!(int, Storage.Triangular),
-        float, Storage.Triangular));
-    static assert (!isMatrixView!(
-        MatrixView!(int, Storage.Triangular),
-        int, Storage.Symmetric));
-}
-
-

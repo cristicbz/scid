@@ -14,11 +14,9 @@ import std.range;
 import std.traits;
 import std.typetuple: allSatisfy;
 
-import scid.core.testing;
-import scid.core.traits;
+import scid.common.testing;
+import scid.common.traits;
 import scid.exception;
-
-
 
 
 /** Check whether lhs and rhs are equal to within the specified number
