@@ -179,7 +179,7 @@ void buildClean()
     {
         if (!exists(path)) return;
         writeln("Removing: ", path);
-        if (isdir(path)) rmdirRecurse(path);
+        if (isDir(path)) rmdirRecurse(path);
         else std.file.remove(path);
     }
 
@@ -208,7 +208,7 @@ string[] getSources()
 
 void ensureDir(string dir)
 {
-    if (exists(dir)) enforce(isdir(dir), "Not a directory: "~dir);
+    if (exists(dir)) enforce(isDir(dir), "Not a directory: "~dir);
     else mkdirRecurse(dir);
 }
 
