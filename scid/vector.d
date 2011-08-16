@@ -17,6 +17,37 @@ enum VectorType {
 	Row, Column
 }
 
+/**
+This template allows for the creation of SciD's vector storage type.  A
+SciD Vector is a one-dimensional array-like object that has reference-counted 
+copy-on-write semantics.  It can be used in SciD expressions.  VectorType
+controls whether the vector is treated as a row or column vector.
+
+Examples:
+---
+// Create a Vector from an existing array.
+double[] arr = [1.0, 2.0, 3.0];
+auto vec1 = Vector!double(arr);
+vec1[0] = 42;
+assert(arr[0] == 1);   // The array is copied, not aliased.
+auto vec2 = vec1;
+vec2[1] = 84;  
+assert(vec1[1] == 2);  // Value semantics.
+
+// Create a Vector from a type and a length.
+auto vec3 = Vector!(double, VectorType.Row)(3);
+vec3[0] = 8;
+vec3[1] = 6;
+vec3[2] = 7;
+
+// This is allowed because vec3 is a row vector and vec1 is a column
+// vector.
+auto expr = vec3 * vec1;
+
+// This is not allowed because vec1 and vec2 are both column vectors.
+auto fails = vec1 * vec2;
+---
+*/
 template Vector( ElementOrStorage, VectorType vectorType = VectorType.Column )
 		if( isScalar!(BaseElementType!ElementOrStorage) ) {
 	
@@ -24,6 +55,46 @@ template Vector( ElementOrStorage, VectorType vectorType = VectorType.Column )
 		alias BasicVector!( ArrayStorage!( ElementOrStorage, vectorType ) ) Vector;
 	else
 		alias BasicVector!( ElementOrStorage )              Vector;
+}
+
+/**
+Convenience function for creating a Vector from an existing array, using the
+array's element type.
+
+Examples:
+---
+double[] arr = [1.0, 2.0, 3.0];
+
+// The following are equivalent:
+auto vec1 = vector(arr);
+auto vec2 = Vector!double(arr);
+---
+*/
+Vector!( T, vectorType ) 
+vector( T, VectorType vectorType = VectorType.Column )( T[] array ) {
+    return typeof(return)(array);
+}
+
+unittest {
+    // Test examples, except use convenience functions where possible.
+    // Create a Vector from an existing array.
+    double[] arr = [1.0, 2.0, 3.0];
+    auto vec1 = vector(arr);
+    vec1[0] = 42;
+    assert(arr[0] == 1);   // The array is copied, not aliased.
+    auto vec2 = vec1;
+    vec2[1] = 84;  
+    assert(vec1[1] == 2);  // Value semantics.
+
+    // Create a Vector from a type and a length.
+    auto vec3 = Vector!(double, VectorType.Row)(3);
+    vec3[0] = 8;
+    vec3[1] = 6;
+    vec3[2] = 7;
+
+    // This is allowed because vec3 is a row vector and vec1 is a column
+    // vector.
+    auto expr = vec3 * vec1;
 }
 
 template VectorView( ElementOrStorage, VectorType vectorType = VectorType.Column )
@@ -38,6 +109,49 @@ template StridedVectorView( ElementOrStorage, VectorType vectorType = VectorType
 	alias BasicVector!( StridedArrayViewStorage!( ElementOrStorage, vectorType ) ).View StridedVectorView;
 }
 
+/**
+Template for creating a Vector-like view of a D array.  These have reference
+semantics, since they are views instead of full-blown copy-on-write containers.
+vectorType controls whether the view is treated by SciD as a row or column
+vector.  This can be used in multiple ways:
+
+---
+// Create a Vector-like view of an existing array.  This object will have
+// reference semantics and will use the storage from the existing array.
+double[] arr = [1.0, 2.0, 3.0];
+auto view1 = ExternalVectorView!double(arr);
+view1[0] = 42;
+assert(arr[0] == 42);  // Same storage.
+auto view2 = view1;
+view2[1] = 84;
+assert(view1[1] == 84);  // Reference semantics.
+assert(arr[1] == 84);    // Still using the same storage.
+---
+
+---
+// Create a copy of an existing array using a custom allocator, and obtain
+// a vector view of the copy.
+auto alloc = newRegionAllocator();
+double[] arr = [1.0, 2.0, 3.0];
+auto view1 = ExternalVectorView!double(arr, alloc);
+view1[0] = 42;
+assert(arr[0] == 1);  // Different storage.
+auto view2 = view1;
+view2[1] = 84;
+assert(view1[1] == 84);  // Reference semantics.
+assert(arr[1] == 2);    
+---
+
+---
+// Create a new vector view of length 3 using a custom allocator.
+auto alloc = newRegionAllocator();
+auto vec1 = ExternalVectorView!double(3, alloc);
+vec1[0] = 1;
+auto vec2 = vec1;
+vec2[0] = 84;
+assert(vec1[0] == 84);  // Reference semantics.
+---
+*/
 template ExternalVectorView( ElementOrContainer, VectorType vectorType = VectorType.Column )
 		if( isScalar!( BaseElementType!ElementOrContainer ) ) {
 	
@@ -56,6 +170,72 @@ template ExternalVectorView( ElementOrContainer, VectorType vectorType = VectorT
 			)
 		) ExternalVectorView;
 	}
+}
+
+/**
+Convenience functions for creating an ExternalVectorView from an array,
+using the inferred element type of the array.
+
+Examples:
+---
+double[] arr = [1.0, 2, 3];
+
+// These two lines are equivalent:
+auto view1 = externalVectorView(arr);
+auto view2 = ExternalVectorView!(double)(arr);
+
+auto alloc = newRegionAllocator();
+
+// These two lines are also equivalent.
+auto view3 = externalVectorView(arr, alloc);
+auto view4 = ExternalVectorView!double(arr, alloc);
+---
+*/
+ExternalVectorView!( T, vectorType ) 
+externalVectorView( T, VectorType vectorType = VectorType.Column )( T[] array ) {
+    return typeof(return)(array);
+}
+
+/// Ditto
+ExternalVectorView!( T, vectorType ) 
+externalVectorView( T, VectorType vectorType = VectorType.Column, Allocator )
+( T[] array, Allocator alloc ) {
+    return typeof(return)(array, alloc);
+}
+
+unittest {
+    // Test the examples, except use the convenience functions where possible.
+    double[] arr = [1.0, 2.0, 3.0];
+    auto view1 = externalVectorView(arr);
+    view1[0] = 42;
+    assert(arr[0] == 42);  // Same storage.
+    auto view2 = view1;
+    view2[1] = 84;
+    assert(view1[1] == 84);  // Reference semantics.
+    assert(arr[1] == 84);    // Still using the same storage.
+}
+
+unittest {
+    import scid.internal.regionallocator;
+    auto alloc = newRegionAllocator();
+    double[] arr = [1.0, 2.0, 3.0];
+    auto view1 = externalVectorView(arr, alloc);
+    view1[0] = 42;
+    assert(arr[0] == 1);  // Different storage.
+    auto view2 = view1;
+    view2[1] = 84;
+    assert(view1[1] == 84);  // Reference semantics.
+    assert(arr[1] == 2);    
+}
+
+unittest {
+    import scid.internal.regionallocator;
+    auto alloc = newRegionAllocator();
+    auto vec1 = ExternalVectorView!double(3, alloc);
+    vec1[0] = 1;
+    auto vec2 = vec1;
+    vec2[0] = 84;
+    assert(vec1[0] == 84);  // Reference semantics.
 }
 
 struct BasicVector( Storage_ ) {
