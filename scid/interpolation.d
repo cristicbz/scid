@@ -26,9 +26,7 @@ enum SplineStorage
 /// The type of optimization
 enum SplineOptim
 {
-    // No, no, no! David Blaine! We don't need your magic!
     normal, /// no special features
-    // Use the Force, Luke!
     fixVar /** accelerate multiple calculations with the same
              * variable value array
              */
@@ -1043,8 +1041,8 @@ struct SplineAkima(Tvar, Tfunc,
 /* NOTE: Perhaps these functions should go to a separte module */
 private:
 
-// Common binary search in a sorted array
-// FIXME: Does phobos already have such function?
+/* Common binary search in a sorted array.
+   Returns index of the first element in the first interval that contains x */
 private pure size_t binarySearch(T)(T[] a, T x)
 {
     size_t ilo = 0;
@@ -1052,12 +1050,19 @@ private pure size_t binarySearch(T)(T[] a, T x)
     while(ihi - ilo > 1)
     {
         size_t i = (ihi + ilo) / 2;
-        if(a[i] > x)
-            ihi = i;
-        else
+        if(a[i] == x)
+        {
+            // Exact match
             ilo = i;
+            ihi = ilo + 1; // This is to violate loop condition
+        }
+        else if(a[i] > x)
+            ihi = i; // x is somwhere on the right
+        else
+            ilo = i; // x is somwhere on the left
     }
     if(ilo == a.length - 1)
+        // if x is equal to the last element return the last interval
         --ilo;
     return ilo;
 }
