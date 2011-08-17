@@ -1,123 +1,117 @@
 /** This module contains types for interpolation.
   *
+  * VVA is variable value array
+  * FVA is function value array
+  *
   * This is an alpha version. The interface can be changed.
   *
-  * Version: 0.2-a
+  * Version: 0.3-a
   * Authors: Maksim Zholudev
   * Copyright: Copyright (c) 2011, Maksim Zholudev. All rights reserved.
   * License: Boost License 1.0
+  *
   */
 module scid.interpolation;
 // TODO: add more embedded documentation
 // FIXME: add "in" and "out" qualifiers for function arguments
 
 import std.math;
-
-/** Determines which arras should be duplicated and stored in the spline
-  * structue.
-  */
-enum SplineStorage
-{
-    none, /// Do not make any copies
-    var, /// Keep a copy of the variable value array
-    all /// Keep a copy of both variable and function value arrays
-}
+import std.algorithm;
+import scid.common.traits;
+import scid.vector;
 
 /// The type of optimization
 enum SplineOptim
 {
-    normal, /// no special features
-    fixVar /** accelerate multiple calculations with the same
-             * variable value array
+    normal, /// No special features.
+    fixVar /** Preliminary calculations depending only on VVA are made if it
+             * changes. Minimal amount of operations is performed when FVA
+             * changes.
              */
 }
 
-/** Common functions for univariate splines
+/** Common functions for univariate splines.
+  * "Eoc" prefix means Element Or Container
   */
-mixin template splineBase(Tvar, Tfunc,
-                          SplineStorage storage)
+mixin template splineBase(EocVar, EocFunc)
 {
-    // Variable and function value arrays
+    // Test the environment this template is mixed in
+    static assert(is(typeof(optim) == SplineOptim),
+                  "Spline must have \"optim\" parameter");
+    static assert(is(typeof(this.minPoints) == size_t),
+                  "Spline must have \"size_t minPoints\" field.");
+    // NOTE: will not work because of a compiler bug
+    // TODO: send a bug request
+    /*
+    static if(optim == SplineOptim.fixVar)
+    {
+        static assert(is(typeof(this._calcVarDependent) ==
+                         void function(void)),
+                      "Spline must have \"_calcVarDependent\" method");
+        static assert(is(typeof(this._calcFuncDependent) ==
+                         void function(void)),
+                      "Spline must have \"_calcFuncDependent\" method");
+    }
+    else
+    {
+        static assert(is(typeof(this._calcAll) == void function(void)),
+                      "Spline must have \"_calcAll\" method ");
+    }*/
+
+    alias ProduceArray!EocVar VarArray;
+    alias ProduceArray!EocFunc FuncArray;
+    alias BaseElementType!VarArray VarType;
+    alias BaseElementType!FuncArray FuncType;
+
     private
     {
         size_t _maxSize = 0;
-        Tvar[] _x; // variable value array
-        Tfunc[] _f; // function value array
+        VarArray _x; // variable value array (VVA)
+        FuncArray _f; // function value array (FVA)
 
-        static if(storage != SplineStorage.none)
+        static if(optim == SplineOptim.fixVar)
         {
-            Tvar[] _bufx; // memory reserved for variable value array
-            static if(storage == SplineStorage.all)
-            {
-                Tfunc[] _buff; // memory reserved for function value array
-            }
+            /* Flag indicating that all variable dependent data must be
+               recalculated */
+            bool _needUpdateVar;
         }
     }
 
     public
     {
-        /** Select a variable value array for the spline
-          */
-        void setVar(Tvar[] x)
-        in
+        @property const length()
         {
-            static if(storage != SplineStorage.none)
-            {
-                assert(x.length <= _maxSize,
-                       "Variable value array is too large");
-            }
+            return _x.length;
         }
-        body
+
+        /** Select a VVA for the spline
+          */
+        void setVar(VarArray x)
         {
-            static if(storage != SplineStorage.none)
-            {
-                _x = _bufx[0..x.length];
-                _x[] = x[];
-            }
-            else
-            {
-                _x = x;
-            }
+            _x = x; // Copy source vector
             static if(optim == SplineOptim.fixVar)
             {
-                _needUpdateVar = true;
+                _needUpdateVar = true; // Set flag since VVA has been changed
             }
         }
 
-        /** Select a function value array for the spline
+        /** Select a FVA for the spline
           */
-        void setFunc(Tfunc[] f)
-        in
+        void setFunc(FuncArray f)
         {
-            static if(storage == SplineStorage.all)
-            {
-                assert(f.length <= _maxSize,
-                       "Function value array is too large");
-            }
-        }
-        body
-        {
-            static if(storage == SplineStorage.all)
-            {
-                _f = _buff[0..f.length];
-                _f[] = f[];
-            }
-            else
-            {
-                _f = f;
-            }
+            _f = f;
         }
 
-        /** Select variable and function value arrays for the spline
+        /** Select both VVA and FVA for the spline
           */
-        void setAll(Tvar[] x, Tfunc[] f)
+        void setAll(VarArray x, FuncArray f)
         {
-            // TODO: enlarge buffers if they are too small
             setVar(x);
             setFunc(f);
         }
 
-        /** Calculate the interpolant data. Makes it ready for function evaluation.
+        /** Calculate the interpolant data. Makes it ready for function
+          * evaluation.
           */
         void calculate()
         in
@@ -129,6 +123,10 @@ mixin template splineBase(Tvar, Tfunc,
             for(size_t i = 0; i < _x.length - 1; ++i)
                 assert(_x[i] < _x[i+1],
                        "Variable value array is not sorted in ascending order");
+            /* FIXME: use isSorted when random-access interface
+               will be implemented for vectors */
+            /*assert(isSorted(_x),
+                   "Variable value array is not sorted in ascending order");*/
         }
         body
         {
@@ -147,10 +145,10 @@ mixin template splineBase(Tvar, Tfunc,
             }
         }
 
-        /** Calculate the interpolant data for given variable and function value
-          * arrays. Makes it ready for function evaluation.
+        /** Calculate the interpolant data for given VVA and FVA. Makes it ready
+          * for function evaluation.
           */
-        void calculate(Tvar[] x, Tfunc[] y)
+        void calculate(VarArray x, FuncArray y)
         {
             setAll(x, y);
             calculate();
@@ -186,12 +184,8 @@ struct SplineView(Tspline)
     private Tspline* _spline; // TODO: make it a property?
 
     // Types from the wrapped spline
-    public
-    {
-        /** Function and variable types for the wrapped spline */
-        alias typeof(_spline._f[0]) Tfunc;
-        alias typeof(_spline._x[0]) Tvar; ///ditto
-    }
+    alias BaseElementType!(typeof(_spline._f)) FuncType;
+    alias BaseElementType!(typeof(_spline._x)) VarType;
 
     // Index lookup
     private
@@ -199,7 +193,7 @@ struct SplineView(Tspline)
         size_t _index = 0; // The index of current interval
 
         // Find the value x in a sorted array a
-        void _updateIndex(Tvar x)
+        void _updateIndex(VarType x)
         {
             // Does current interval contain x?
             if((_spline._x[_index + 1] < x) || (_spline._x[_index] > x))
@@ -221,10 +215,11 @@ struct SplineView(Tspline)
           * Params:
           *     x = variable value
           */
-        Tfunc eval(Tvar x)
+        FuncType eval(VarType x)
         in
         {
-            assert((x >= _spline._x[0]) && (x <= _spline._x[$-1]),
+            // TODO: change _spline.length to $ when Vector implement opDollar
+            assert((x >= _spline._x[0]) && (x <= _spline._x[_spline.length-1]),
                    "Variable value out of interpolation range");
         }
         body
@@ -237,10 +232,11 @@ struct SplineView(Tspline)
           * Params:
           *     x = variable value
           */
-        Tfunc deriv(Tvar x)
+        FuncType deriv(VarType x)
         in
         {
-            assert((x >= _spline._x[0]) && (x <= _spline._x[$-1]),
+            // TODO: change _spline.length to $ when Vector implement opDollar
+            assert((x >= _spline._x[0]) && (x <= _spline._x[_spline.length-1]),
                    "Variable value out of interpolation range");
         }
         body
@@ -256,22 +252,20 @@ struct SplineView(Tspline)
 /** Linear one-dimensional spline (order = 1, defect = 1).
   *
   * Params:
-  *     Tvar = type of variable
-  *     Tfunc = type of function
-  *     storage = spline storage type (none by default)
+  *     EocVar = type of variable
+  *     EocFunc = type of function
   *     optim = spline optimization type (normal by default)
   */
-struct SplineLinear(Tvar, Tfunc,
-                    SplineOptim optim = SplineOptim.normal,
-                    SplineStorage storage = SplineStorage.none)
+struct SplineLinear(EocVar, EocFunc,
+                    SplineOptim optim = SplineOptim.normal)
 {
-    mixin splineBase!(Tvar, Tfunc, storage);
+    mixin splineBase!(EocVar, EocFunc);
 
     // Data
     private
     {
         // Spline parameters:
-        Tfunc[] _c1;
+        FuncType[] _c1;
         /* The interpolant is:
          *     f(x) = _f[i] + _c1[i] * dx
          *     dx = x - _x[i]
@@ -279,14 +273,6 @@ struct SplineLinear(Tvar, Tfunc,
 
         void _allocContents(size_t maxSize) // TODO: use scid.core.memory
         {
-            static if(storage != SplineStorage.none)
-            {
-                _bufx.length = maxSize;
-                static if(storage == SplineStorage.all)
-                {
-                    _buff.length = maxSize;
-                }
-            }
             _c1.length = maxSize - 1;
             static if(optim == SplineOptim.fixVar)
             {
@@ -303,14 +289,13 @@ struct SplineLinear(Tvar, Tfunc,
         {
             /* NOTE: division is slower than multiplication.
              */
-            bool _needUpdateVar;
 
             /* Data depending only on variable values */
-            Tvar[] _rdx;
+            VarType[] _rdx;
 
             void _calcVarDependent()
             {
-                for(size_t i = 0; i < _x.length-1; ++i)
+                for(size_t i = 0; i < _x.length - 1; ++i)
                     _rdx[i] = 1 / (_x[i+1] - _x[i]);
             }
 
@@ -334,13 +319,13 @@ struct SplineLinear(Tvar, Tfunc,
     private
     {
         // Calculate function in a given interval
-        Tfunc _calcFunction(Tvar x, size_t index)
+        FuncType _calcFunction(VarType x, size_t index)
         {
             return _f[index] + _c1[index] * (x - _x[index]);
         }
 
         // Calculate first derivative in a given interval
-        Tfunc _calcDeriv(Tvar x, size_t index)
+        FuncType _calcDeriv(VarType x, size_t index)
         {
             return _c1[index];
         }
@@ -366,7 +351,7 @@ struct SplineLinear(Tvar, Tfunc,
           *     calcNow = whether to calculate the spline immediately
           *               (true by default)
           */
-        this(Tvar[] x, Tfunc[] y, bool calcNow = true)
+        this(VarArray x, FuncArray y, bool calcNow = true)
         {
             this(x.length);
             setAll(x, y);
@@ -381,57 +366,47 @@ struct SplineLinear(Tvar, Tfunc,
 /** Cubic one-dimensional spline (order = 3, defect = 1).
   *
   * Params:
-  *     Tvar = type of variable
-  *     Tfunc = type of function
-  *     storage = spline storage type (none by default)
+  *     EocVar = type of variable
+  *     EocFunc = type of function
   *     optim = spline optimization type (normal by default)
   */
-struct SplineCubic(Tvar, Tfunc,
-                   SplineOptim optim = SplineOptim.normal,
-                   SplineStorage storage = SplineStorage.none)
+struct SplineCubic(EocVar, EocFunc,
+                   SplineOptim optim = SplineOptim.normal)
 {
     /* TODO: After testing, reduce the number of workspaces by using
      *       the coefficient arrays as workspaces.
      *       Attention!
-     *       If Tfunc operations are considerably slower than Tvar operations
-     *       _wa, _wc and all _aX arryas should be of type Tvar. So, no storage
+     *       If FuncType operations are considerably slower than VarType operations
+     *       _wa, _wc and all _aX arryas should be of type VarType. So, no storage
      *       in coefficient arrays for them.
      */
 
-    mixin splineBase!(Tvar, Tfunc, storage);
+    mixin splineBase!(EocVar, EocFunc);
 
     // Data and workspaces
     private
     {
         // Spline parameters:
-        Tfunc[] _c1;
-        Tfunc[] _c2;
-        Tfunc[] _c3;
+        FuncType[] _c1;
+        FuncType[] _c2;
+        FuncType[] _c3;
         /* The interpolant is:
          *     f(x) = _f[i] + _c1[i] * dx + _c2[i] * dx*dx + _c3[i] * dx*dx*dx
          *     dx = x - _x[i]
          */
 
         // Workspaces
-        Tvar _wa[];
-        Tfunc _wb[];
-        Tvar _wc[];
-        Tfunc _wu[];
-        Tfunc _wv[];
+        VarType _wa[];
+        FuncType _wb[];
+        VarType _wc[];
+        FuncType _wu[];
+        FuncType _wv[];
 
         void _allocContents(size_t maxSize) // TODO: use scid.core.memory
         {
-            static if(storage != SplineStorage.none)
-            {
-                _bufx.length = maxSize;
-                static if(storage == SplineStorage.all)
-                {
-                    _buff.length = maxSize;
-                }
-            }
-            _c1.length = maxSize - 1;
-            _c2.length = maxSize - 1;
-            _c3.length = maxSize - 1;
+            _c1.length = maxSize;
+            _c2.length = maxSize;
+            _c3.length = maxSize;
             _wa.length = maxSize;
             _wb.length = maxSize;
             _wc.length = maxSize;
@@ -478,22 +453,22 @@ struct SplineCubic(Tvar, Tfunc,
                     // The index of the last point of spline
                     size_t N = _x.length - 1;
                     // Some variables for optimization
-                    Tvar h0 = _x[1] - _x[0];
-                    Tfunc v0 = _f[1] - _f[0];
-                    Tfunc d0 = v0 / h0;
+                    VarType h0 = _x[1] - _x[0];
+                    FuncType v0 = _f[1] - _f[0];
+                    FuncType d0 = v0 / h0;
                     // Linear equation coefficients
-                    Tvar a0, a1, a2;
+                    VarType a0, a1, a2;
                     // Linear equation right part
-                    Tfunc b;
+                    FuncType b;
 
                     // Boundary conditions on the left side (the first equation)
                     // TODO: optimize
-                    Tvar hf = _x[$-1] - _x[$-2];
+                    VarType hf = _x[length-1] - _x[length-2];
                     a0 = 1 / hf;
                     a2 = 1 / h0;
                     a1 = 2 * (a0 + a2);
                     b = 3 * ((_f[1] - _f[0]) / (h0 * h0)
-                             + (_f[0] - _f[$-2]) / (hf * hf));
+                             + (_f[0] - _f[length-2]) / (hf * hf));
 
                     // Build'n'sweep forward
 
@@ -505,16 +480,16 @@ struct SplineCubic(Tvar, Tfunc,
                     for(size_t i = 1; i < N; ++i)
                     {
                         // Optimization
-                        Tvar h1 = _x[i+1] - _x[i];
-                        Tfunc v1 = _f[i+1] - _f[i];
-                        Tfunc d1 = v1 / h1;
+                        VarType h1 = _x[i+1] - _x[i];
+                        FuncType v1 = _f[i+1] - _f[i];
+                        FuncType d1 = v1 / h1;
                         // Calculate eqaution coefficients
                         a0 = h0 / (h0 + h1);
                         a1 = 2;
                         a2 = 1 - a0;
                         b = 3 * (a0 * d1 + a2 * d0);
                         // Forward sweep step
-                        Tvar factor = 1 / (a1 + a0 * _wa[i - 1]);
+                        VarType factor = 1 / (a1 + a0 * _wa[i - 1]);
                         _wa[i] = -a2 * factor;
                         _wb[i] = (b - a0 * _wb[i - 1]) * factor;
                         _wc[i] = -a0 * _wc[i - 1] * factor;
@@ -531,7 +506,7 @@ struct SplineCubic(Tvar, Tfunc,
                     b = 0;
 
                     // TODO: optimize
-                    Tvar factor = 1 / (a1 + a0 * _wa[N - 1]);
+                    VarType factor = 1 / (a1 + a0 * _wa[N - 1]);
                     _wa[N] = -a2 * factor;
                     _wb[N] = (b - a0 * _wb[N - 1]) * factor;
                     _wc[N] = -a0 * _wc[N - 1] * factor;
@@ -546,15 +521,15 @@ struct SplineCubic(Tvar, Tfunc,
                         _wv[i - 1] = _wa[i] * _wv[i] + _wc[i];
                     }
 
-                    Tfunc k = (_wb[N] + _wa[N] * _wu[1])
+                    FuncType k = (_wb[N] + _wa[N] * _wu[1])
                               / (1 - _wc[N] - _wa[N] * _wv[1]);
                     _c1[N] = k;
                     for(size_t i = N; i > 0; --i)
                     {
                         _c1[i - 1] = _wu[i - 1] + k * _wv[i - 1];
                         // Optimization
-                        Tvar h = _x[i] - _x[i - 1];
-                        Tfunc v = _f[i] - _f[i - 1];
+                        VarType h = _x[i] - _x[i - 1];
+                        FuncType v = _f[i] - _f[i - 1];
                         // Calculate remaining coefficients
                         _c2[i - 1] = (3 * v - h * (2 * _c1[i - 1] + _c1[i]))
                                      / (h * h);
@@ -567,13 +542,13 @@ struct SplineCubic(Tvar, Tfunc,
                     // The index of the last point of spline
                     size_t N = _x.length - 1;
                     // Some variables for optimization
-                    Tvar h0 = _x[1] - _x[0];
-                    Tfunc v0 = _f[1] - _f[0];
-                    Tfunc d0 = v0 / h0;
+                    VarType h0 = _x[1] - _x[0];
+                    FuncType v0 = _f[1] - _f[0];
+                    FuncType d0 = v0 / h0;
                     // Linear equation coefficients
-                    Tvar a0, a1, a2;
+                    VarType a0, a1, a2;
                     // Linear equation right part
-                    Tfunc b;
+                    FuncType b;
 
                     // Boundary conditions on the left side (the first equation)
                     if(_bcLeftType == BoundCond.deriv1)
@@ -593,16 +568,16 @@ struct SplineCubic(Tvar, Tfunc,
                     // Build'n'sweep forward
 
                     // First step
-                    Tfunc factor = 1/ a1;
+                    FuncType factor = 1/ a1;
                     _wa[0] = -a2 * factor;
                     _wb[0] = b * factor;
 
                     for(size_t i = 1; i < N; ++i)
                     {
                         // Optimization
-                        Tvar h1 = _x[i+1] - _x[i];
-                        Tfunc v1 = _f[i+1] - _f[i];
-                        Tfunc d1 = v1 / h1;
+                        VarType h1 = _x[i+1] - _x[i];
+                        FuncType v1 = _f[i+1] - _f[i];
+                        FuncType d1 = v1 / h1;
                         // Calculate eqaution coefficients
                         a0 = h0 / (h0 + h1);
                         a1 = 2;
@@ -640,8 +615,8 @@ struct SplineCubic(Tvar, Tfunc,
                         // Backward sweep step
                         _c1[i - 1] = _wa[i - 1] * _c1[i] + _wb[i - 1];
                         // Optimization
-                        Tvar h = _x[i] - _x[i - 1];
-                        Tfunc v = _f[i] - _f[i - 1];
+                        VarType h = _x[i] - _x[i - 1];
+                        FuncType v = _f[i] - _f[i - 1];
                         // Calculate remaining coefficients
                         _c2[i - 1] = (3 * v - h * (2 * _c1[i - 1] + _c1[i]))
                                      / (h * h);
@@ -656,7 +631,7 @@ struct SplineCubic(Tvar, Tfunc,
     // Function evaluation code
     private
     {
-        Tfunc _calcFunction(Tvar x, size_t index)
+        FuncType _calcFunction(VarType x, size_t index)
         {
             double dx = x - _x[index];
             return _f[index] + dx * (_c1[index]
@@ -664,7 +639,7 @@ struct SplineCubic(Tvar, Tfunc,
         }
 
         // Calculate first derivative in a given interval
-        Tfunc _calcDeriv(Tvar x, size_t index)
+        FuncType _calcDeriv(VarType x, size_t index)
         {
             double dx = x - _x[index];
             return _c1[index] + dx * (2 * _c2[index] + dx * 3 * _c3[index]);
@@ -702,15 +677,15 @@ struct SplineCubic(Tvar, Tfunc,
             return _bcLeftType;
         }
 
-        private Tfunc _bcLeftVal = 0;
+        private FuncType _bcLeftVal = 0;
 
-        void bcLeftVal(Tfunc val)
+        void bcLeftVal(FuncType val)
         {
             _bcLeftVal = val;
         }
 
         /// Value of BC on the left side
-        Tfunc bcLeftVal()
+        FuncType bcLeftVal()
         {
             return _bcLeftVal;
         }
@@ -730,15 +705,15 @@ struct SplineCubic(Tvar, Tfunc,
             return _bcRightType;
         }
 
-        private Tfunc _bcRightVal = 0;
+        private FuncType _bcRightVal = 0;
 
-        void bcRightVal(Tfunc val)
+        void bcRightVal(FuncType val)
         {
             _bcRightVal = val;
         }
 
         /// Value of BC on the right side
-        Tfunc bcRightVal()
+        FuncType bcRightVal()
         {
             return _bcRightVal;
         }
@@ -764,11 +739,11 @@ struct SplineCubic(Tvar, Tfunc,
           *     calcNow = whether to calculate the spline immediately
           *               (true by default)
           */
-        this(Tvar[] x, Tfunc[] y, bool calcNow = true,
+        this(FuncArray x, VarArray y, bool calcNow = true,
              BoundCond bcLType = BoundCond.deriv2,
              BoundCond bcRType = BoundCond.deriv2,
-             Tfunc bcLVal = 0,
-             Tfunc bcRVal = 0)
+             FuncType bcLVal = 0,
+             FuncType bcRVal = 0)
         {
             this(x.length);
             setAll(x, y);
@@ -786,39 +761,38 @@ struct SplineCubic(Tvar, Tfunc,
 /** One-dimensional Akima interpolation.
   *
   * Params:
-  *     Tvar = type of variable
-  *     Tfunc = type of function
-  *     storage = spline storage type (none by default)
+  *     EocVar = type of variable
+  *     EocFunc = type of function
   *     optim = spline optimization type (normal by default)
-  *     Props = strings, describing properties of Tfunc type to process.
+  *     Props = strings, describing properties of FuncType type to process.
   *             It is necessary because for this kind of splines not only
   *             linear operations are performed with function values.
   *
   * Examples:
+  * Complex function
   * ----------
   * alias SplineAkima!(double, Complex!(double),
-  *                    SplineOptim.normal, SplineStorage.none,
+  *                    SplineOptim.normal,
   *                    ".re", ".im") MySpline;
   * ----------
   */
-struct SplineAkima(Tvar, Tfunc,
+struct SplineAkima(EocVar, EocFunc,
                    SplineOptim optim = SplineOptim.normal,
-                   SplineStorage storage = SplineStorage.none,
                    Props...)
 {
     // TODO: Add different boundary conditions
     // TODO: Add a mechanism for adding points to the curve
     // TODO: Implement support of compound types
 
-    mixin splineBase!(Tvar, Tfunc, storage);
+    mixin splineBase!(EocVar, EocFunc);
 
     // Data and workspaces
     private
     {
         // Spline parameters:
-        Tfunc[] _c1;
-        Tfunc[] _c2;
-        Tfunc[] _c3;
+        FuncType[] _c1;
+        FuncType[] _c2;
+        FuncType[] _c3;
         /* The interpolant is:
          *     f(x) = _f[i] + _c1[i] * dx + _c2[i] * dx*dx + _c3[i] * dx*dx*dx
          *     dx = x - _x[i]
@@ -826,14 +800,6 @@ struct SplineAkima(Tvar, Tfunc,
 
         void _allocContents(size_t maxSize) // TODO: use scid.core.memory
         {
-            static if(storage != SplineStorage.none)
-            {
-                _bufx.length = maxSize;
-                static if(storage == SplineStorage.all)
-                {
-                    _buff.length = maxSize;
-                }
-            }
             _c1.length = maxSize;
             _c2.length = maxSize - 1;
             _c3.length = maxSize - 1;
@@ -858,7 +824,7 @@ struct SplineAkima(Tvar, Tfunc,
                 foreach(p; Props)
                 {
                     static assert(is(typeof(p) == string),
-                                  "Properties should be strings");
+                                  "Properties must be strings");
                     result ~= w ~ p ~
                               " = abs(" ~
                                   dl ~ p
@@ -953,8 +919,8 @@ struct SplineAkima(Tvar, Tfunc,
                  *       the coefficient arrays instead.
                  */
                 size_t N = _x.length - 1;
-                Tfunc[] d = new Tfunc[N + 2];
-                Tfunc[] w = new Tfunc[N + 3];
+                FuncType[] d = new FuncType[N + 2];
+                FuncType[] w = new FuncType[N + 3];
                 // Calculate slopes and weights
                 for(size_t i = 1; i <= N; ++i)
                     d[i] = (_f[i] - _f[i - 1]) / (_x[i] - _x[i - 1]);
@@ -973,8 +939,8 @@ struct SplineAkima(Tvar, Tfunc,
                 // Calculate the remaining coefficients
                 for(size_t i = 0; i < N; ++i)
                 {
-                    Tvar h = _x[i + 1] - _x[i];
-                    Tvar v = _f[i + 1] - _f[i];
+                    VarType h = _x[i + 1] - _x[i];
+                    VarType v = _f[i + 1] - _f[i];
                     _c2[i] = (3 * v - h * (2 * _c1[i] + _c1[i + 1]))
                              / (h * h);
                     _c3[i] = (-2 * v + h * (_c1[i] + _c1[i + 1]))
@@ -987,7 +953,7 @@ struct SplineAkima(Tvar, Tfunc,
     // Function evaluation code
     private
     {
-        Tfunc _calcFunction(Tvar x, size_t index)
+        FuncType _calcFunction(VarType x, size_t index)
         {
             double dx = x - _x[index];
             return _f[index] + dx * (_c1[index]
@@ -995,7 +961,7 @@ struct SplineAkima(Tvar, Tfunc,
         }
 
         // Calculate first derivative in a given interval
-        Tfunc _calcDeriv(Tvar x, size_t index)
+        FuncType _calcDeriv(VarType x, size_t index)
         {
             double dx = x - _x[index];
             return _c1[index] + dx * (2 * _c2[index] + dx * 3 * _c3[index]);
@@ -1022,7 +988,7 @@ struct SplineAkima(Tvar, Tfunc,
           *     calcNow = whether to calculate the spline immediately
           *               (true by default)
           */
-        this(Tvar[] x, Tfunc[] y, bool calcNow = true)
+        this(VarArray x, FuncArray y, bool calcNow = true)
         {
             this(x.length);
             setAll(x, y);
@@ -1043,7 +1009,7 @@ private:
 
 /* Common binary search in a sorted array.
    Returns index of the first element in the first interval that contains x */
-private pure size_t binarySearch(T)(T[] a, T x)
+private size_t binarySearch(A, X)(A a, X x)
 {
     size_t ilo = 0;
     size_t ihi = a.length;
@@ -1067,3 +1033,10 @@ private pure size_t binarySearch(T)(T[] a, T x)
     return ilo;
 }
 
+private template ProduceArray(ElementOrContainer)
+{
+    static if(is(BaseElementType!ElementOrContainer == ElementOrContainer))
+        alias ElementOrContainer[] ProduceArray;
+    else
+        alias ElementOrContainer ProduceArray;
+}
