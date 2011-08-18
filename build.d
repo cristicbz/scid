@@ -41,12 +41,16 @@ version (Posix)
     immutable libDir    = "generated";          // Location of lib file
     immutable headerDir = "generated/headers";  // Location of .di files
     immutable htmlDir   = "generated/html";     // Location of .html files
+    immutable libBLAS   = "/usr/lib/libblas/libblas.a"; // BLAS library
+    immutable libLAPACK = "/usr/lib/lapack/liblapack.a"; // LAPACK library
 }
 version (Windows)
 {
     immutable libDir    = r"generated";
     immutable headerDir = r"generated\headers";
     immutable htmlDir   = r"generated\html";
+    immutable libBLAS   = "";
+    immutable libLAPACK = "deps\\blaslapackdll.lib";
 }
 
 
@@ -87,10 +91,11 @@ void buildLib()
     ensureDir(libDir);
     auto sources = getSources();
 
-    version (Posix)     immutable libFile = libName;
+    version (Posix)     immutable libFile = "lib"~libName;
     version (Windows)   immutable libFile = libName;
 
-    immutable buildCmd = "dmd -g -debug -lib deps\\blaslapackdll.lib "
+    immutable buildCmd = "dmd -g -debug -lib "
+        ~libBLAS~" "~libLAPACK~" "
         ~std.string.join(sources, " ")
         ~" -od"~libDir~" -of"~libFile;
     writeln(buildCmd);
@@ -103,7 +108,8 @@ void buildDemo()
     ensureDir(libDir);
     auto sources = getSources();
 
-    immutable buildCmd = "dmd -g -debug -version=demo deps\\blaslapackdll.lib "
+    immutable buildCmd = "dmd -g -debug -version=demo "
+        ~libBLAS~" "~libLAPACK~" "
         ~ std.string.join(sources, " ")
         ~" -od"~libDir~" -ofdemo";
     writeln(buildCmd);
