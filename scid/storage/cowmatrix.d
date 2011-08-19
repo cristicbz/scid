@@ -35,43 +35,26 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 	enum isRowMajor = (storageOrder == StorageOrder.RowMajor);
 	
 	/** Allocate a new matrix of given dimensions. Initialize with zero. */
-	this()( size_t newRows, size_t newCols )
-	in {
-		assert( newRows != 0 && newCols != 0, zeroDimMsg_( newRows, newCols ) );
-	} body {
-		data_.reset( newRows * newCols );
-		ptr_     = data_.ptr;
-		rows_    = newRows;
-		cols_    = newCols;
-		leading_ = minor_;
-		blas.scal( newRows * newCols, Zero!ElementType, ptr_, 1 );
+	this()( size_t newRows, size_t newCols ) {
+		if( newRows != 0 && newCols != 0 ) {
+			data_.reset( newRows * newCols );
+			ptr_     = data_.ptr;
+			rows_    = newRows;
+			cols_    = newCols;
+			leading_ = minor_;
+			blas.scal( newRows * newCols, Zero!ElementType, ptr_, 1 );
+		}
 	}
 	
 	/** Allocate a new uninitialized matrix of given dimensions. */
-	this()( size_t newRows, size_t newCols, void* )
-	in {
-		assert( newRows != 0 && newCols != 0, zeroDimMsg_( newRows, newCols ) );
-	} body {
-		data_.reset( newRows * newCols );
-		ptr_     = data_.ptr;
-		rows_    = newRows;
-		cols_    = newCols;
-		leading_ = minor_;
-	}
-	
-	/** Create a new matrix with given data, data pointer and dimensions. */
-	this()( Data data, ElementType* ptr, size_t numRows, size_t numColumns, size_t leadingDimension  )
-	in {
-		assert( data.owns( ptr ), "Pointer passed to ctor is not owned by data." );
-	} body {
-		data_    = data;
-		ptr_     = ptr;
-		rows_    = numRows;
-		cols_    = numColumns;
-		leading_ = leadingDimension;
-		
-		assert( leading_ >= minor_, "Leading dimension is smaller than minor dimension." );
-		assert( data.owns( ptr_ + leading_ * major_ - 1 ), "Size passed to ctor exceeds size of data." );
+	this()( size_t newRows, size_t newCols, void* ) {
+		if( newRows != 0 && newCols != 0 ) {
+			data_.reset( newRows * newCols );
+			ptr_     = data_.ptr;
+			rows_    = newRows;
+			cols_    = newCols;
+			leading_ = minor_;
+		}
 	}
 	
 	/** Create a new matrix with a given major dimension (i.e number of columns for ColumnMajor matrices)
@@ -79,8 +62,11 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 	*/
 	this( E )( size_t newMajor, E[] initializer ) if( isConvertible!(E, ElementType) )
 	in {
-		assert( newMajor != 0 && initializer.length % newMajor == 0, initMsg_( newMajor, initializer ) );
+		checkGeneralInitializer_( newMajor, initializer );
 	} body {
+		if( !initializer.length )
+			return;
+		
 		data_.reset( to!(ElementType[])(initializer) );
 		ptr_     = data_.ptr;
 		major_   = newMajor;
@@ -88,8 +74,11 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 		leading_ = minor_;
 	}
 	
-	this( E )( E[][] initializer ) if( isConvertible!(E, ElementType) ) {
-		if( initializer.length == 0 || initializer[0].length == 0)
+	this( E )( E[][] initializer ) if( isConvertible!(E, ElementType) )
+	in {
+		checkGeneralInitializer_( initializer );
+	} body {
+		if( initializer.length == 0 || initializer[0].length == 0 )
 			return;
 		
 		rows_ = initializer.length;
@@ -114,11 +103,7 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 	}
 	
 	/** Create a matrix as a slice of an existing one. */
-	this()( CowMatrix* other, size_t rowStart, size_t numRows, size_t colStart, size_t numCols )
-	in {
-		assert( rowStart + numRows <= other.rows_ && colStart + numCols <= other.cols_,
-			    sliceMsg_( rowStart, numRows, colStart, numCols ) );
-	} body {
+	this()( CowMatrix* other, size_t rowStart, size_t numRows, size_t colStart, size_t numCols ) {
 		data_    = other.data_;
 		rows_    = numRows;
 		cols_    = numCols;
@@ -141,7 +126,8 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 	/** Resize the matrix and set all the elements to zero. */
 	void resize( size_t newRows, size_t newCols ) {
 		resize( newRows, newCols, null );
-		generalMatrixScaling!storageOrder( rows_, cols_, Zero!ElementType, ptr_, leading_ );
+		if( !empty )
+			generalMatrixScaling!storageOrder( rows_, cols_, Zero!ElementType, ptr_, leading_ );
 	}
 	
 	/** Resize the matrix and leave the elements uninitialized. */
@@ -149,10 +135,15 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 		auto newLength = newRows * newCols;
 		if( newLength != data_.length || data_.refCount() > 1 ) {
 			data_.reset( newLength );
-			ptr_     = data_.ptr;
-			rows_    = newRows;
-			cols_    = newCols;
-			leading_ = minor_;
+
+			if( newLength != 0 ) {
+				rows_    = newRows;
+				cols_    = newCols;
+				leading_ = minor_;
+				ptr_     = data_.ptr;
+			} else {
+				clear_();
+			}
 		}
 	}
 	
@@ -170,7 +161,7 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 	/** Element access. */
 	ElementType index( size_t i, size_t j ) const
 	in {
-		assert( i < rows_ && j < cols_, boundsMsg_(i, j) );
+		checkBounds_( i, j );
 	} body {
 		return ptr_[ mapIndex( i, j ) ];
 	}
@@ -178,7 +169,10 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 	/// ditto
 	void indexAssign( string op = "" )( ElementType rhs, size_t i, size_t j )
 	in {
-		assert( i < rows_ && j < cols_, boundsMsg_(i, j) );
+		checkBounds_( i, j );
+	} out {
+		assert( index( i, j ) == rhs );
+		assert( data_.refCount() == 1 );
 	} body {
 		unshareData_();
 		mixin( "ptr_[ mapIndex( i, j ) ]" ~ op ~ "= rhs;" );
@@ -189,10 +183,12 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 	*/
 	void popFront()
 	in {
-		assert( !empty, msgPrefix_ ~ "popFront on empty." );
+		checkNotEmpty_!"popFront"();
 	} body {
-		-- major_;
-		ptr_ += leading_;
+		if( -- major_ )
+			ptr_ += leading_;
+		else
+			clear_();
 	}
 	
 	/** Remove the last major subvector (e.g. column for column major matrices). Part of the BidirectionalRange
@@ -200,9 +196,10 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 	*/
 	void popBack()
 	in {
-		assert( !empty, msgPrefix_ ~ "popBack on empty." );
+		checkNotEmpty_!"popBack"();
 	} body {
-		-- major_;
+		if( ( -- major_ ) == 0 )
+			clear_();
 	}
 	
 	@property {
@@ -278,7 +275,7 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 	}
 	
 private:
-	mixin MatrixErrorMessages;
+	mixin MatrixChecks;
 
 	static if( isRowMajor ) {
 		alias rows_ major_;
@@ -288,8 +285,14 @@ private:
 		alias cols_ major_;
 	}
 	
+	void clear_() {
+		// This is OK, right?
+		clear( this );
+	}
+	
 	void unshareData_() {
-		if( data_.refCount() == 1 )
+		// The < 2 is because refCount() == 0 is when the matrix is empty
+		if( data_.refCount() < 2 )
 			return;
 		
 		if( leading_ == minor_ ) {
@@ -313,7 +316,8 @@ private:
 		ptr_ = data_.ptr;
 	}
 	
-	size_t        leading_, rows_, cols_;
+	size_t        leading_ = 1;  // BLAS/LAPACK require leading_ >= 1 all the time
+	size_t        rows_, cols_;
 	Data          data_;
 	ElementType*  ptr_;
 }

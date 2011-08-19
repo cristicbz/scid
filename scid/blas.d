@@ -417,6 +417,9 @@ private struct naive_ {
 	static T dot( bool forceComplex = false, T )( size_t n, const(T)* x, size_t incx, const(T)* y, size_t incy )
 				if( !isComplexScalar!T || forceComplex ) {
 		debug( blasCalls ) reportNaive_();
+					
+		if( !n )
+			return Zero!T;
 				
 		assert( checkVector( y, incy )	);
 		assert( checkVector( x, incx )	);

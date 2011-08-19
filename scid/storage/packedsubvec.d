@@ -24,6 +24,9 @@ struct PackedSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	enum bool isUpper = ( containerRef_.triangle == MatrixTriangle.Upper );
 	
 	this( ref ContainerRef containerRef, size_t fixed, size_t start, size_t len ) {
+		if( len == 0 )
+			return;
+		
 		containerRef_ = containerRef;
 		fixed_  = fixed;
 		start_  = start;
@@ -49,12 +52,12 @@ struct PackedSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	}
 	
 	void resize( size_t newLength, void* ) {
-		assert( newLength == length_, msgPrefix_ ~ "Cannot change length of packed subvector." );
+		checkAssignLength_( newLength );
 	}
 	
 	Slice slice( size_t start, size_t end )
 	in {
-		assert( start < end && end <= length_, sliceMsg_( start, end ) );
+		checkSliceIndices_( start, end );
 	} body {
 		return typeof( return )( containerRef_, fixed_, start + start_, end - start );	
 	}
@@ -69,7 +72,7 @@ struct PackedSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	
 	ElementType index( size_t i ) const
 	in {
-		assert( i < length, boundsMsg_( i ) );
+		checkBounds_( i );
 	} body {
 		static if( isRow ) return containerRef_.index( fixed_, i + start_ );
 		else               return containerRef_.index( i + start_, fixed_ );
@@ -77,7 +80,9 @@ struct PackedSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	
 	void indexAssign( string op="" )( ElementType rhs, size_t i )
 	in {
-		assert( i < length, boundsMsg_( i ) );
+		checkBounds_( i );
+	} out {
+		assert( index( i ) == rhs );
 	} body {
 		static if( isRow ) containerRef_.indexAssign!op( rhs, fixed_, i + start_ );
 		else               containerRef_.indexAssign!op( rhs, i + start_, fixed_ );
@@ -85,14 +90,14 @@ struct PackedSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	
 	void copy( Transpose tr = Transpose.yes, S )( auto ref S rhs ) if( isInputRange!(Unqual!S) && hasLength!(Unqual!S) )
 	in {
-		assert( rhs.length == length, sliceAssignMsg_( 0, length, rhs.length ) );
+		checkAssignLength_( rhs.length );
 	} body {
 		slicedCopy_!tr( rhs, 0, length_ );
 	}
 	
 	void scaledAddition( Transpose tr = Transpose.yes, S )( ElementType alpha, auto ref S rhs ) if( isInputRange!(Unqual!S) && hasLength!(Unqual!S) )
 	in {
-		assert( rhs.length <= length, msgPrefix_ ~ "axpy length mismatch " ~ to!string(length) ~ " vs. " ~ to!string(rhs.length) ); 
+		checkAssignLength_( rhs.length );
 	} body {
 		slicedScaledAddition_!tr( alpha, rhs, 0, length_ );
 	}
@@ -103,14 +108,14 @@ struct PackedSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	
 	void popFront()
 	in {
-		assert( !empty, msgPrefix_ ~ "popFront on empty." );
+		checkNotEmpty_!"popFront"();
 	} body {
 		++ start_; -- length_;
 	}
 	
 	void popBack()
 	in {
-		assert( !empty, msgPrefix_ ~ "popBack on empty." );
+		checkNotEmpty_!"popBack"();
 	} body {
 		-- length_;
 	}
@@ -124,28 +129,28 @@ struct PackedSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 		
 		void front( ElementType newValue )
 		in {
-			assert( !empty, msgPrefix_ ~ "front assign on empty." );
+			checkNotEmpty_!"front setter"();
 		} body {
 			indexAssign( newValue, 0 );
 		}
 		
 		void back( ElementType newValue  )
 		in {
-			assert( !empty, msgPrefix_ ~ "back assign on empty." );
+			checkNotEmpty_!"back setter"();
 		} body {
 			indexAssign( newValue, length_ - 1 );
 		}
 			
 		ElementType front() const
 		in {
-			assert( !empty, msgPrefix_ ~ "front get on empty." );
+			checkNotEmpty_!"front"();
 		} body {
 			return this.index( 0 );
 		}
 		
 		ElementType back() const
 		in {
-			assert( !empty, msgPrefix_ ~ "back get on empty." );
+			checkNotEmpty_!"back"();
 		} body {
 			return index( length_ - 1 );
 		}
@@ -157,7 +162,7 @@ struct PackedSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	}
 	
 private:
-	mixin ArrayErrorMessages;
+	mixin ArrayChecks;
 
 	void slicedCopy_( Transpose tr = Transpose.yes, S )( auto ref S rhs, size_t start, size_t end ) if( isInputRange!(Unqual!S) && hasLength!(Unqual!S) )
 	in {
@@ -178,7 +183,7 @@ private:
 
 	void slicedScale_( ElementType rhs, size_t start, size_t end )
 	in {
-		assert( start < end && end <= length, sliceMsg_( start, end ) );
+		checkSliceIndices_( start, end );
 	} body {
 		size_t i = realStart_( start );
 		size_t e = realEnd_( end );
@@ -188,8 +193,9 @@ private:
 	
 	void slicedScaledAddition_( Transpose tr = Transpose.yes, S )( ElementType alpha, auto ref S rhs, size_t start, size_t end ) if( isInputRange!(Unqual!S) && hasLength!(Unqual!S) )
 	in {
-		assert( start < end && end <= length, sliceMsg_( start, end ) );
-		assert( end-start >= rhs.length, sliceAssignMsg_( start, end, rhs.length )  );
+		checkSliceIndices_( start, end );
+		assert( start == 0 && end == length );
+		checkAssignLength_( rhs.length );
 	} body {
 		size_t i = realStart_( start );
 		size_t e = realEnd_( end );

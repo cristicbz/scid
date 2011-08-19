@@ -365,8 +365,7 @@ struct BasicMatrix( Storage_ ) {
 		static if( isResizable ) {
 			storage.resize( newRows, newColumns, null );
 		} else {
-			assert( rows == newRows && columns == newColumns,
-				dimMismatch_( newRows, newColumns ) );
+			checkAssignDims_( newRows, newColumns );
 		}
 	}
 	
@@ -394,7 +393,7 @@ struct BasicMatrix( Storage_ ) {
 		/** Return the first row for row-major matrices or the first column for column-major matrices. */
 		MajorView front()
 		in {
-			assert( !empty(), msgPrefix_ ~ "front on empty." );
+			checkNotEmpty_!"front"();
 		} body {
 			static if( isRowMajor )
 				return storage.row( 0 );
@@ -405,7 +404,7 @@ struct BasicMatrix( Storage_ ) {
 		/** Return the last row for row-major matrices or the last column for column-major matrices. */
 		MajorView back()
 		in {
-			assert( !empty(), msgPrefix_ ~ "back on empty." );
+			checkNotEmpty_!"back"();
 		} body {
 			static if( isRowMajor )
 				return storage.row( storage.rows - 1 );
@@ -574,7 +573,7 @@ struct BasicMatrix( Storage_ ) {
 		
 		void popFront()
 		in {
-			assert( !empty,	"popFront on empty" );
+			checkNotEmpty_!"front"();
 		} body {
 			++ start_;	
 		}
@@ -591,7 +590,7 @@ struct BasicMatrix( Storage_ ) {
 	}
 	
 private:
-	mixin MatrixErrorMessages;
+	mixin MatrixChecks;
 }
 
 /** Matrix inversion. */

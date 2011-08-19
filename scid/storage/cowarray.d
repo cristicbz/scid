@@ -40,17 +40,6 @@ struct CowArray( ElementType_ ) {
 		length_ = newLength;
 	}
 	
-	/** Create an array with given data, a pointer in the data and length. */
-	this()( Data data, ElementType* ptr, size_t length )
-	in {
-		assert( data.owns( ptr ), "Pointer passed to ctor is not owned by data." );
-		assert( data.owns( ptr + length - 1 ), "Size passed to ctor exceeds that of data." );
-	} body {
-		data_   = data;
-		ptr_    = ptr;
-		length_ = length;
-	}
-	
 	/** Allocate a new array and initialize it with the given initializer. */
 	this( E )( E[] initializer ) {
 		data_.reset( to!(ElementType[])(initializer) );
@@ -91,7 +80,7 @@ struct CowArray( ElementType_ ) {
 	/** Element access. */
 	ElementType index( size_t i ) const
 	in {
-		assert( i < length, boundsMsg_( i ) );
+		checkBounds_( i );
 	} body {
 		return ptr_[ i ];
 	}
@@ -99,16 +88,19 @@ struct CowArray( ElementType_ ) {
 	/// ditto
 	void indexAssign( string op = "" )( ElementType rhs, size_t i )
 	in {
-		assert( i < length, boundsMsg_( i ) );
+		checkBounds_( i );
+	} out {
+		assert( index( i ) == rhs );
+		assert( data_.refCount() == 1 );
 	} body {
 		unshareData_();
 		mixin( "ptr_[ i ]" ~ op ~ "= rhs;" );
-	}
+	} 
 	
 	/** Get a slice of this array. */
 	typeof( this ) slice( size_t start, size_t end )
 	in {
-		assert( start < end && end <= length, sliceMsg_( start, end ) );
+		checkSliceIndices_( start, end );
 	} body {
 		CowArray r;
 		r.data_ = data_;
@@ -120,7 +112,7 @@ struct CowArray( ElementType_ ) {
 	/** Remove the first element. Part of the BidirectionalRange concept. */
 	void popFront()
 	in {
-		assert( !empty, msgPrefix_ ~ "popFront() on empty." );
+		checkNotEmpty_!"popFront"();
 	} body {
 		++ ptr_;
 		-- length_;
@@ -129,7 +121,7 @@ struct CowArray( ElementType_ ) {
 	/** Remove the last element. Part of the BidirectionalRange concept. */
 	void popBack()
 	in {
-		assert( !empty, msgPrefix_ ~ "popBack() on empty." );
+		checkNotEmpty_!"popBack"();
 	} body {
 		-- length_;
 	}
@@ -167,7 +159,7 @@ struct CowArray( ElementType_ ) {
 		/** Change the first element. Part of the BidirectionalRange concept. */
 		void front( ElementType newValue )
 		in {
-			assert( !empty, msgPrefix_ ~ "front assign on empty." );
+			checkNotEmpty_!"front setter"();
 		} body {
 			unshareData_();
 			*ptr_ = newValue;
@@ -176,7 +168,7 @@ struct CowArray( ElementType_ ) {
 		/** Change the last element. Part of the BidirectionalRange concept. */
 		void back( ElementType newValue  )
 		in {
-			assert( !empty, msgPrefix_ ~ "back assign on empty." );
+			checkNotEmpty_!"back setter"();
 		} body {
 			unshareData_();
 			*(ptr_ + length_ - 1) = newValue;
@@ -185,7 +177,7 @@ struct CowArray( ElementType_ ) {
 		/** Return the first element. Part of the BidirectionalRange concept. */
 		ElementType front() const
 		in {
-			assert( !empty, msgPrefix_ ~ "front get on empty." );
+			checkNotEmpty_!"front"();
 		} body {
 			return *ptr_;
 		}
@@ -193,7 +185,7 @@ struct CowArray( ElementType_ ) {
 		/** Return the last element. Part of the BidirectionalRange concept. */
 		ElementType back() const
 		in {
-			assert( !empty, msgPrefix_ ~ "back get on empty." );
+			checkNotEmpty_!"back"();
 		} body {
 			return *(ptr_ + length_ - 1);
 		}
@@ -208,7 +200,7 @@ struct CowArray( ElementType_ ) {
 	}
 	
 private:
-	mixin ArrayErrorMessages;
+	mixin ArrayChecks;
 	
 	void unshareData_() {
 		if( data_.refCount() == 1 )

@@ -344,8 +344,9 @@ struct BasicVector( Storage_ ) {
 			evalCopy( ExternalVectorView!( E, vectorType )( rhs ), this );
 		else static if( closureOf!Rhs == Closure.Scalar )
 			evalCopy( relatedConstant( rhs, this ), this );
-		else
+		else {
 			evalCopy( rhs, this );
+		}
 		
 	}
 	
@@ -403,7 +404,7 @@ struct BasicVector( Storage_ ) {
 		
 		ElementType front() const
 		in {
-			assert( !empty, emptyMsg_("front") );	
+			checkNotEmpty_!"front"();
 		} body {
 			static if( is( typeof(Storage.init.front) ) )
 				return storage.front;
@@ -413,7 +414,7 @@ struct BasicVector( Storage_ ) {
 		
 		ElementType back() const
 		in {
-			assert( !empty, emptyMsg_("back") );
+			checkNotEmpty_!"front"();
 		} body {
 			static if( is( typeof(Storage.init.back) ) )
 				return storage.back;
@@ -452,9 +453,9 @@ struct BasicVector( Storage_ ) {
 	}
 	
 	Storage storage;
-
+	
 private:
-	mixin ArrayErrorMessages;	
+	mixin ArrayChecks;
 }
 
 unittest {

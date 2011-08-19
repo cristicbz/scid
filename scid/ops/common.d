@@ -117,6 +117,9 @@ mixin template GeneralMatrixScalingAndAddition() {
 		import scid.lapack;
 		import std.exception;
 		
+		if( this.empty )
+			return;
+		
 		int info;
 		size_t n = this.rows;
 		assert( n == this.columns, "Inversion of non-square matrix." );
@@ -135,6 +138,9 @@ mixin template GeneralMatrixScalingAndAddition() {
 		import scid.blas;
 		import scid.lapack;
 		import std.exception;
+		
+		if( this.empty && dest.empty )
+			return;
 		
 		size_t n = this.rows;                                           // check that the matrix is square
 		assert( n == this.columns, "Inversion of non-square matrix." );

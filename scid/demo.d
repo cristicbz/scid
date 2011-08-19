@@ -344,18 +344,31 @@ version( demo ) {
 		enforce( array[ 0 .. 2 ] == [ 10., 22. ] );
 	}
 	
+	void emptyMatVecTest()() {
+		Matrix!double m1,m2;
+		Vector!double v1,v2;
+		
+		// We're really checking there's no assertions or memory problems
+		// Empty vectors
+		v1[] = v2;
+		v2[] = v1[ 0 .. 0 ];
+		v1[] *= 2.0;
+		v1[] += v2;
+		double x = eval( v1.t*v2 );
+			
+		// Empty matrices
+		m1[ 0 .. 0 ][ 0 .. 0 ] = m2;
+		m1[] += m2;
+		m1[] *= m2;
+		
+		// The inverse of an empty matrix is the empty matrix. After all, it satisfies
+		// the properties of the identity matrix.
+		eval( inv( m1 ) );
+		eval( inv( m1 ) * m2 );
+	}
+	
 	void main() {
-		auto a = Matrix!double( [[1,2,3],[3,4,5]] );
-		auto b = Matrix!double( [[5,6],[7,8],[9,10]] );
-		Matrix!(double, StorageOrder.RowMajor) c;
-		c[] = a * b;     writeln( c.pretty );
-		c[] = b.t * a.t;   writeln( c.pretty );
-		c[] = a.t * b.t; writeln( c.pretty );
-		
-		
+		emptyMatVecTest();
 		readln();
-		
-		//opTest();
-		//dMatInvTest();
 	}
 }
