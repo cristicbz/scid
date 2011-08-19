@@ -291,7 +291,7 @@ struct BasicVector( Storage_ ) {
 	
 	ElementType opIndexOpAssign( string op )( ElementType rhs, size_t i ) {
 		storage.indexAssign!op( rhs, i );
-		return storage.index( i, j );
+		return storage.index( i );
 	}
 	
 	ref typeof(this) opAssign( typeof(this) rhs ) {

@@ -121,11 +121,11 @@ version( demo ) {
 		alias TypeTuple!(
 			Matrix!T,
 			//Matrix!(T,StorageOrder.RowMajor),
-			TriangularMatrix!T,
+			//TriangularMatrix!T,
 			//TriangularMatrix!(T, MatrixTriangle.Lower ),
 			//TriangularMatrix!(T, MatrixTriangle.Upper, StorageOrder.RowMajor),
 			//TriangularMatrix!(T, MatrixTriangle.Lower, StorageOrder.RowMajor),
-			SymmetricMatrix!T,
+			//SymmetricMatrix!T,
 			// SymmetricMatrix!(T, MatrixTriangle.Lower ),
 			// SymmetricMatrix!(T, MatrixTriangle.Upper, StorageOrder.RowMajor),
 			// SymmetricMatrix!(T, MatrixTriangle.Lower, StorageOrder.RowMajor)
@@ -362,8 +362,8 @@ version( demo ) {
 		
 		// The inverse of an empty matrix is the empty matrix. After all, it satisfies
 		// the properties of the identity matrix.
-		eval( inv( m1 ) );
-		eval( inv( m1 ) * m2 );
+		enforce( eval( inv( m1 ) ).empty );
+		enforce( ( eval( inv( m1 ) * m2 ) ).empty );
 	}
 	
 	void testIssue52()() {
@@ -400,10 +400,16 @@ version( demo ) {
 	void testIssue35()() {
 		// Issue 35 - Assignment should return value for chaining
 		auto mat = Matrix!double(5, 5);
+		auto vec = Vector!double([1.,2,3,4]);
 		mat[2, 2] = mat[3, 3] = 5;
 		enforce( mat[2, 2] == 5 && mat[3, 3] == 5 );
 		mat[1, 1] = mat[2, 2] += 3;
 		enforce( mat[1, 1] == 8 && mat[2, 2] == 8);
+		
+		vec[ 0 ] = vec[ 1 ] = 10.;
+		enforce( vec[0] == 10. && vec[1] == 10. );
+		vec[ 2 ] = vec[ 3 ] += 5.0;
+		enforce( vec[2] == 9.0 && vec[ 3 ] == 9.0 );
 	}
 	
 	void testIssue32()() {
@@ -429,6 +435,6 @@ version( demo ) {
 	}
 	
 	void main() {
-		readln();
+		testIssue35();
 	}
 }

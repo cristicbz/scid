@@ -1,7 +1,5 @@
-* GeneralMatrixView doesn't use isInitd_().
 * Refactor storage operations to use Matrix/Vectors, rather than other storages..
 * Change .ptr in container reference types to .addressForNoCopyHack -> hacks should be verbose.
-* Triangular/Symmetric array adapters do not use isInitd_().
 * Replace swaps with moves in opAssign()-s
 * Implement strided views for PackedSubVector-s
 * Matrix[ i ][ a .. b ] returns slice while Matrix[ a .. b ][ j ] returns view.

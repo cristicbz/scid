@@ -184,7 +184,7 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	@property {
 		ref ContainerRef     container()        { return containerRef_; }
 		ElementType*         data()             { return containerRef_.data + firstIndex_ ; }
-		const(ElementType)*  cdata()      const { return containerRef_.cdata + firstIndex_; }
+		const(ElementType)*  cdata()      const { return isInitd_() ? containerRef_.cdata + firstIndex_ : null; }
 		bool                 empty()      const { return major_ == 0; }
 		size_t               length()     const { return major_; }
 		size_t               rows()       const { return rows_; }
@@ -219,6 +219,10 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	
 private:
 	mixin MatrixChecks;
+
+	bool isInitd_() const {
+		return containerRef_.RefCounted.isInitialized();	
+	}
 
 	size_t map_( size_t i, size_t j ) const {
 		static if( isRowMajor )

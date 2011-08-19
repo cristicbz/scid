@@ -235,7 +235,10 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 		
 		/** Get a mutable pointer to the memory used by this storage. */
 		const(ElementType)* cdata() const {
-			return containerRef_.cdata + firstIndex_;
+			if( isInitd_() )
+				return containerRef_.cdata + firstIndex_;
+			else
+				return null;
 		}
 		
 		/** The index in the array at which this view starts. */
@@ -322,6 +325,10 @@ private:
 		size_t map_( size_t i ) const {
 			return i + firstIndex_;
 		}
+	}
+	
+	bool isInitd_() const {
+		return containerRef_.RefCounted.isInitialized();	
 	}
 	
 	size_t firstIndex_, length_;
