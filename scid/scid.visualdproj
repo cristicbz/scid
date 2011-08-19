@@ -59,7 +59,7 @@
   <doXGeneration>1</doXGeneration>
   <xfilename>$(IntDir)\$(TargetName).json</xfilename>
   <debuglevel>0</debuglevel>
-  <debugids>blasCalls lapackCalls fallbackCalls</debugids>
+  <debugids />
   <versionlevel>0</versionlevel>
   <versionids>demo</versionids>
   <dump_source>0</dump_source>

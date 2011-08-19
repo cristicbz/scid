@@ -406,6 +406,28 @@ version( demo ) {
 		enforce( mat[1, 1] == 8 && mat[2, 2] == 8);
 	}
 	
+	void testIssue32()() {
+		// Issue 32 - 
+		auto xTx = Matrix!double(1, 1);
+		auto xTy = Matrix!double(1, 2);
+		xTx[0, 0] = 31;
+
+		xTy[0, 0] = 41;
+		xTy[0, 1] = 59;
+
+		auto ret = eval(inv(xTx) * xTy);
+	}
+	
+	void testIssue48()() {
+		// Issue 48 - Vector should be a random-access range	
+		import std.range;
+		
+		static assert(isInputRange!(Vector!double));         
+		static assert(isForwardRange!(Vector!double));       
+		static assert(isBidirectionalRange!(Vector!double)); 
+		static assert(isRandomAccessRange!(Vector!double)); 
+	}
+	
 	void main() {
 		readln();
 	}

@@ -423,6 +423,10 @@ struct BasicVector( Storage_ ) {
 			else
 				return storage.index( storage.length - 1 );
 		}
+		
+		typeof( this ) save() {
+			return typeof( this )( storage );	
+		}
 	}
 	
 	string toString() const {
