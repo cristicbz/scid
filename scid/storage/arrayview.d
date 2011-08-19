@@ -156,26 +156,15 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 		mixin("containerRef_.data[ map_( i ) ] " ~ op ~ "= rhs;");
 	}
 	
-	/** Returns a slice of the array. Part of the VectorStorage concept. */
-	typeof(this) slice( size_t start, size_t end )
-	in {
-		checkSliceIndices_( start, end );
-	} body {
-		static if( isStrided )
-			return typeof( this )( containerRef_, map_(start), end - start, stride_ );
-		else
-			return typeof( this )( containerRef_, map_(start), end - start );
-	}
-	
 	/** Returns a another contiguous view of the array. Part of the VectorStorage concept. */
 	View view( size_t start, size_t end )
 	in {
 		checkSliceIndices_( start, end );
 	} body {
 		static if( isStrided )
-			return typeof( return )( containerRef_, start, end-start, stride_ );
+			return typeof( return )( containerRef_, map_(start), end-start, stride_ );
 		else
-			return typeof( return )( containerRef_, start, end-start );
+			return typeof( return )( containerRef_, map_(start), end-start );
 	}
 	
 	/** Returns another strided view of the array. Part of the VectorStorage concept. */
@@ -186,10 +175,17 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 	} body {
 		size_t len = (end - start);
 		len = len / newStride + ( (len % newStride) != 0 );
-		static if( isStrided )
+		static if( isStrided ) {
 			newStride *= stride_;
-		return typeof( return )( containerRef_, start, len, newStride );
+			return typeof( return )( containerRef_, map_(start), len, newStride );
+		} else {
+			return typeof( return )( containerRef_, map_(start), len, newStride );
+		}
 	}
+	
+	/** Returns a slice of the array. Part of the VectorStorage concept. */
+	alias view slice;
+	
 	
 	/** Check if the length is the same as the one given and zero out all the elements. Part of the VectorStorage concept. */
 	void resize( size_t rlength ) {

@@ -198,7 +198,6 @@ version( demo ) {
 		}
 	}
 	
-	import scid.ops.expression;
 	void dMatOpsTest()() {
 		alias Matrix!double            dGeMat;
 		alias SymmetricMatrix!double   dSyMat;
@@ -390,8 +389,16 @@ version( demo ) {
 		enforce( b[0,0] == 1. && b[0,1] == 2. && b[1,0] == 4. && b[1,1] == 5. );
 	}
 	
+	void testIssue49()() {
+		// Issue 49 - Wrong index-slice-assign
+		auto mat = Matrix!double([[1,2,3],[4,5,6],[7,8,9]]);
+		auto vec = Vector!double([100, 200]).t;
+		mat[2][0..2] = vec;
+		testMat( mat, 3, 3, [1.,4,100,2,5,200,3,6,9] );
+	}
+	
 	void main() {
-		testIssue50();
+		testIssue49();
 		readln();
 	}
 }
