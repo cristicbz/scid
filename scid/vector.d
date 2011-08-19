@@ -284,12 +284,14 @@ struct BasicVector( Storage_ ) {
 		return storage.index( i );
 	}
 	
-	void opIndexAssign( ElementType rhs, size_t i ) {
+	ElementType opIndexAssign( ElementType rhs, size_t i ) {
 		storage.indexAssign( rhs, i );
+		return rhs;
 	}
 	
-	void opIndexOpAssign( string op )( ElementType rhs, size_t i ) {
+	ElementType opIndexOpAssign( string op )( ElementType rhs, size_t i ) {
 		storage.indexAssign!op( rhs, i );
+		return storage.index( i, j );
 	}
 	
 	ref typeof(this) opAssign( typeof(this) rhs ) {

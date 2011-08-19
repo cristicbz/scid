@@ -397,8 +397,16 @@ version( demo ) {
 		testMat( mat, 3, 3, [1.,4,100,2,5,200,3,6,9] );
 	}
 	
+	void testIssue35()() {
+		// Issue 35 - Assignment should return value for chaining
+		auto mat = Matrix!double(5, 5);
+		mat[2, 2] = mat[3, 3] = 5;
+		enforce( mat[2, 2] == 5 && mat[3, 3] == 5 );
+		mat[1, 1] = mat[2, 2] += 3;
+		enforce( mat[1, 1] == 8 && mat[2, 2] == 8);
+	}
+	
 	void main() {
-		testIssue49();
 		readln();
 	}
 }

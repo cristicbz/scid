@@ -262,13 +262,15 @@ struct BasicMatrix( Storage_ ) {
 	}
 	
 	/** Element access. Forwarded to the storage.indexAssign method. */
-	void opIndexAssign( ElementType rhs, size_t i, size_t j ) {
+	ElementType opIndexAssign( ElementType rhs, size_t i, size_t j ) {
 		storage.indexAssign( rhs, i, j );
+		return rhs;
 	}
 	
 	/** Element access. Forwarded to the storage.indexAssign!op method. */
-	void opIndexOpAssign( string op )( ElementType rhs, size_t i, size_t j ) {
+	ElementType opIndexOpAssign( string op )( ElementType rhs, size_t i, size_t j ) {
 		storage.indexAssign!op( rhs, i, j );	
+		return storage.index( i, j );
 	}
 	
 	/** Get a view of the matrix. Forwarded to the storage.view method. */
