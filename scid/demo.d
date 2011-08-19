@@ -367,8 +367,31 @@ version( demo ) {
 		eval( inv( m1 ) * m2 );
 	}
 	
+	void testIssue52()() {
+		// Issue 52 - Inverting Scalars
+		// Scalar literals
+		float   f = 2.0f, invf = inv( f );
+		double  d = 4.0,  invd = inv( d );
+		cdouble z = 2.0 + 2.0i, invz = inv( z );
+		enforce( invf == 0.5f );
+		enforce( invd == 0.25 );
+		enforce( invz == 0.25 - 0.25i );
+		
+		// Scalar expression
+		double invdot = eval( inv( externalVectorView!(VectorType.Row)( [1.,2.] ) * externalVectorView( [4.,8.] ) ) );
+		enforce( invdot == 0.05 );
+	}
+	
+	void testIssue50()() {
+		// Issue 50 - Matrix slice-slice-assign ends up transposed	
+		auto a = Matrix!double([[1.0, 2], [4.0, 5]]);
+		auto b = Matrix!double(3, 3);
+		b[0..2][0..2] = a;
+		enforce( b[0,0] == 1. && b[0,1] == 2. && b[1,0] == 4. && b[1,1] == 5. );
+	}
+	
 	void main() {
-		emptyMatVecTest();
+		testIssue50();
 		readln();
 	}
 }

@@ -11,6 +11,7 @@ import scid.storage.cowmatrix;
 import scid.storage.external;
 import scid.storage.constant;
 import scid.common.traits;
+import scid.common.meta;
 
 import std.algorithm, std.range, std.conv;
 
@@ -596,6 +597,14 @@ private:
 /** Matrix inversion. */
 Expression!( "inv", M ) inv( M )( auto ref M matrix ) if( closureOf!M == Closure.Matrix ) {
 	return typeof( return )( matrix );	
+}
+
+auto inv( ScalarExpr )( auto ref ScalarExpr expr ) if( closureOf!ScalarExpr == Closure.Scalar && !isLeafExpression!ScalarExpr ) {
+	return One!(BaseElementType!ScalarExpr) / expr;
+}
+
+ScalarType inv( ScalarType )( ScalarType expr ) if( isScalar!ScalarType ) {
+	return One!ScalarType / expr;
 }
 
 

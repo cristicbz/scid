@@ -192,13 +192,13 @@ auto view4 = ExternalVectorView!double(arr, alloc);
 ---
 */
 ExternalVectorView!( T, vectorType ) 
-externalVectorView( T, VectorType vectorType = VectorType.Column )( T[] array ) {
+externalVectorView( VectorType vectorType = VectorType.Column, T )( T[] array ) {
     return typeof(return)(array);
 }
 
 /// Ditto
 ExternalVectorView!( T, vectorType ) 
-externalVectorView( T, VectorType vectorType = VectorType.Column, Allocator )
+externalVectorView( VectorType vectorType = VectorType.Column, T, Allocator )
 ( T[] array, Allocator alloc ) {
     return typeof(return)(array, alloc);
 }

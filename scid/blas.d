@@ -257,7 +257,7 @@ struct blas {
 	if( isConvertible!( T, U ) ) {
 		debug( blasCalls ) {
 			writeln();
-			writeln( "xgecopy( ", matrixToString(transA,m,n,a,lda), ", ", matrixToString('N',m,n,a,ldb), " ) => ..." );
+			writeln( "xgecopy( ", matrixToString(transA,m,n,a,lda), ", ", matrixToString('N',m,n,b,ldb), " ) => ..." );
 		}
 		
 		naive_.xgecopy!transA( m, n, a, lda, b, ldb );
@@ -760,7 +760,7 @@ private struct naive_ {
 		assert( checkMatrix( transA, m, n, a, lda ) );
 		assert( checkMatrix( 'N', m, n, b, ldb ) );
 		
-		if( transA == 'N' ) {
+		static if( transA == 'N' ) {
 			// if a is not transposed
 			if( lda == m && ldb == m ) {
 				// if there are no gaps in their memory, just copy
@@ -782,7 +782,7 @@ private struct naive_ {
 					a += lda; b += ldb;
 				}
 			}
-		} else if( transA == 'T' ) {
+		} else static if( transA == 'T' ) {
 			// if a is transposed, copy a row-by-row to b column-by-column
 			n *= ldb;
 			auto be = b + n;
