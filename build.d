@@ -108,7 +108,7 @@ void buildDemo()
     ensureDir(libDir);
     auto sources = getSources();
 
-    immutable buildCmd = "dmd -g -debug -version=demo "
+    immutable buildCmd = "dmd -v -g -debug -version=demo "
         ~libBLAS~" "~libLAPACK~" "
         ~ std.string.join(sources, " ")
         ~" -od"~libDir~" -ofdemo";

@@ -272,7 +272,7 @@ struct blas {
 	// General matrix copy
 	// B := conj(A)   or
 	// B := conj(A.T), for A and B mxn matrices
-	static void xgecopyc( T, char transA )( size_t m, size_t n, const(T)* a, size_t lda, T* b, size_t ldb ) {
+	static void xgecopyc( char transA, T )( size_t m, size_t n, const(T)* a, size_t lda, T* b, size_t ldb ) {
 		debug( blasCalls ) {
 			writeln();
 			writeln( "xgecopyc( ", matrixToString(transA,m,n,a,lda), ", ", matrixToString('N',m,n,a,ldb), " ) => ..." );
