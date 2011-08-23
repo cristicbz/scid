@@ -98,7 +98,7 @@ struct BasicArrayStorage( ContainerRef_, VectorType vectorType_ = VectorType.Col
 	ElementType index( size_t i ) const
 	in {
 		// this also silently checks for reference initialization through the call to length().
-		assert(	i < length, boundsMsg_( i ) );
+		checkBounds_( i );
 	} body {
 		return containerRef_.index( i );
 	}
@@ -109,23 +109,32 @@ struct BasicArrayStorage( ContainerRef_, VectorType vectorType_ = VectorType.Col
 	*/
 	void indexAssign( string op = "" )( ElementType rhs, size_t i )
 	in {
-		assert( i < length, boundsMsg_( i ) );
+		checkBounds_( i );
 	} body {
 		containerRef_.indexAssign!op( rhs, i ) ;
 	}
 	
 	/** Returns a slice of the array. Part of the VectorStorage concept. */
-	typeof( this ) slice( size_t start, size_t end ) {
+	typeof( this ) slice( size_t start, size_t end )
+	in {
+		checkSliceIndices_( start, end );
+	} body {
 		return typeof(this)( ContainerRef( containerRef_.slice( start, end ).ptr )  );
 	}
 	
 	/** Returns a contiguous view of the array. Part of the VectorStorage concept. */
-	View view( size_t start, size_t end ) {
+	View view( size_t start, size_t end )
+	in {
+		checkSliceIndices_( start, end );
+	} body {
 		return typeof( return )( containerRef_, start, end - start );
 	}
 	
 	/** Returns a strided view of the array. Part of the VectorStorage concept. */
-	StridedView view( size_t start, size_t end, size_t stride ) {
+	StridedView view( size_t start, size_t end, size_t stride )
+	in {
+		checkSliceIndices_( start, end );
+	} body {
 		size_t len = (end - start);
 		len = len / stride + (len % stride != 0);
 		return typeof( return )( containerRef_, start, len, stride );
@@ -198,7 +207,7 @@ struct BasicArrayStorage( ContainerRef_, VectorType vectorType_ = VectorType.Col
 		/// ditto
 		ElementType front() const
 		in {
-			assert( !empty, msgPrefix_ ~ "front() on empty." );
+			checkNotEmpty_!"front"();
 		} body {
 			return containerRef_.front;
 		}
@@ -206,7 +215,7 @@ struct BasicArrayStorage( ContainerRef_, VectorType vectorType_ = VectorType.Col
 		/// ditto
 		ElementType back() const
 		in {
-			assert( !empty, msgPrefix_ ~ "back() on empty." );
+			checkNotEmpty_!"back"();
 		} body {
 			return containerRef_.back;
 		}
@@ -215,7 +224,7 @@ struct BasicArrayStorage( ContainerRef_, VectorType vectorType_ = VectorType.Col
 	/// ditto
 	void popFront()
 	in {
-		assert( !empty, msgPrefix_ ~ "popFront() on empty." );
+		checkNotEmpty_!"popFront"();
 	} body {
 		containerRef_.popFront();
 	}
@@ -223,7 +232,7 @@ struct BasicArrayStorage( ContainerRef_, VectorType vectorType_ = VectorType.Col
 	/// ditto
 	void popBack()
 	in {
-		assert( !empty, msgPrefix_ ~ "popBack() on empty." );
+		checkNotEmpty_!"popBack"();
 	} body {
 		containerRef_.popBack();
 	}
@@ -242,7 +251,7 @@ struct BasicArrayStorage( ContainerRef_, VectorType vectorType_ = VectorType.Col
 	
 private:
 	// The mixin includes some common error messages to use in assertions.
-	mixin ArrayErrorMessages;
+	mixin ArrayChecks;
 
 	// Checks if the wrapped reference is initialized.	
 	bool isInitd_() const {

@@ -121,11 +121,11 @@ version( demo ) {
 		alias TypeTuple!(
 			Matrix!T,
 			//Matrix!(T,StorageOrder.RowMajor),
-			TriangularMatrix!T,
+			//TriangularMatrix!T,
 			//TriangularMatrix!(T, MatrixTriangle.Lower ),
 			//TriangularMatrix!(T, MatrixTriangle.Upper, StorageOrder.RowMajor),
 			//TriangularMatrix!(T, MatrixTriangle.Lower, StorageOrder.RowMajor),
-			SymmetricMatrix!T,
+			//SymmetricMatrix!T,
 			// SymmetricMatrix!(T, MatrixTriangle.Lower ),
 			// SymmetricMatrix!(T, MatrixTriangle.Upper, StorageOrder.RowMajor),
 			// SymmetricMatrix!(T, MatrixTriangle.Lower, StorageOrder.RowMajor)
@@ -198,7 +198,6 @@ version( demo ) {
 		}
 	}
 	
-	import scid.ops.expression;
 	void dMatOpsTest()() {
 		alias Matrix!double            dGeMat;
 		alias SymmetricMatrix!double   dSyMat;
@@ -344,18 +343,98 @@ version( demo ) {
 		enforce( array[ 0 .. 2 ] == [ 10., 22. ] );
 	}
 	
+	void emptyMatVecTest()() {
+		Matrix!double m1,m2;
+		Vector!double v1,v2;
+		
+		// We're really checking there's no assertions or memory problems
+		// Empty vectors
+		v1[] = v2;
+		v2[] = v1[ 0 .. 0 ];
+		v1[] *= 2.0;
+		v1[] += v2;
+		double x = eval( v1.t*v2 );
+			
+		// Empty matrices
+		m1[ 0 .. 0 ][ 0 .. 0 ] = m2;
+		m1[] += m2;
+		m1[] *= m2;
+		
+		// The inverse of an empty matrix is the empty matrix. After all, it satisfies
+		// the properties of the identity matrix.
+		enforce( eval( inv( m1 ) ).empty );
+		enforce( ( eval( inv( m1 ) * m2 ) ).empty );
+	}
+	
+	void testIssue52()() {
+		// Issue 52 - Inverting Scalars
+		// Scalar literals
+		float   f = 2.0f, invf = inv( f );
+		double  d = 4.0,  invd = inv( d );
+		cdouble z = 2.0 + 2.0i, invz = inv( z );
+		enforce( invf == 0.5f );
+		enforce( invd == 0.25 );
+		enforce( invz == 0.25 - 0.25i );
+		
+		// Scalar expression
+		double invdot = eval( inv( externalVectorView!(VectorType.Row)( [1.,2.] ) * externalVectorView( [4.,8.] ) ) );
+		enforce( invdot == 0.05 );
+	}
+	
+	void testIssue50()() {
+		// Issue 50 - Matrix slice-slice-assign ends up transposed	
+		auto a = Matrix!double([[1.0, 2], [4.0, 5]]);
+		auto b = Matrix!double(3, 3);
+		b[0..2][0..2] = a;
+		enforce( b[0,0] == 1. && b[0,1] == 2. && b[1,0] == 4. && b[1,1] == 5. );
+	}
+	
+	void testIssue49()() {
+		// Issue 49 - Wrong index-slice-assign
+		auto mat = Matrix!double([[1,2,3],[4,5,6],[7,8,9]]);
+		auto vec = Vector!double([100, 200]).t;
+		mat[2][0..2] = vec;
+		testMat( mat, 3, 3, [1.,4,100,2,5,200,3,6,9] );
+	}
+	
+	void testIssue35()() {
+		// Issue 35 - Assignment should return value for chaining
+		auto mat = Matrix!double(5, 5);
+		auto vec = Vector!double([1.,2,3,4]);
+		mat[2, 2] = mat[3, 3] = 5;
+		enforce( mat[2, 2] == 5 && mat[3, 3] == 5 );
+		mat[1, 1] = mat[2, 2] += 3;
+		enforce( mat[1, 1] == 8 && mat[2, 2] == 8);
+		
+		vec[ 0 ] = vec[ 1 ] = 10.;
+		enforce( vec[0] == 10. && vec[1] == 10. );
+		vec[ 2 ] = vec[ 3 ] += 5.0;
+		enforce( vec[2] == 9.0 && vec[ 3 ] == 9.0 );
+	}
+	
+	void testIssue32()() {
+		// Issue 32 - 
+		auto xTx = Matrix!double(1, 1);
+		auto xTy = Matrix!double(1, 2);
+		xTx[0, 0] = 31;
+
+		xTy[0, 0] = 41;
+		xTy[0, 1] = 59;
+
+		auto ret = eval(inv(xTx) * xTy);
+	}
+	
+	void testIssue48()() {
+		// Issue 48 - Vector should be a random-access range	
+		import std.range;
+		
+		static assert(isInputRange!(Vector!double));         
+		static assert(isForwardRange!(Vector!double));       
+		static assert(isBidirectionalRange!(Vector!double)); 
+		static assert(isRandomAccessRange!(Vector!double)); 
+	}
+	
 	void main() {
-		auto a = Matrix!double( [[1,2,3],[3,4,5]] );
-		auto b = Matrix!double( [[5,6],[7,8],[9,10]] );
-		Matrix!(double, StorageOrder.RowMajor) c;
-		c[] = a * b;     writeln( c.pretty );
-		c[] = b.t * a.t;   writeln( c.pretty );
-		c[] = a.t * b.t; writeln( c.pretty );
-		
-		
-		readln();
-		
-		//opTest();
-		//dMatInvTest();
+		testIssue35();
 	}
 }

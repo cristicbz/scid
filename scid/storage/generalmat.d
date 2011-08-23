@@ -61,14 +61,14 @@ struct BasicGeneralMatrixStorage( ContainerRef_ ) {
 	}
 	
 	void resize( size_t rows, size_t columns, void* ) {
-		if( containerRef_.RefCounted.isInitialized() ) 
+		if( isInitd_() ) 
 			containerRef_.resize( rows, columns, null );
 		else
 			containerRef_ = ContainerRef( rows, columns, null );
 	}
 	
 	void resize( size_t rows, size_t columns ) {
-		if( containerRef_.RefCounted.isInitialized() ) 
+		if( isInitd_() ) 
 			containerRef_.resize( rows, columns );
 		else
 			containerRef_ = ContainerRef( rows, columns );
@@ -78,12 +78,19 @@ struct BasicGeneralMatrixStorage( ContainerRef_ ) {
 			if( isGeneralMatrixStorage!Source ) {
 		enum srcOrder = transposeStorageOrder!( Source.storageOrder, tr ) ;
 		static if( (!tr || !isComplexScalar!ElementType) && srcOrder == storageOrder && is( Source : BasicGeneralMatrixViewStorage!ContainerRef ) ) {
-			containerRef_ = ContainerRef( source.matrix.ptr, source.firstIndex, source.rows, source.columns );
+			if( source.empty )
+				conatinerRef_ = ContainerRef();
+			else
+				containerRef_ = ContainerRef( source.conatinerRef_.ptr, source.firstIndex, source.rows, source.columns );
 		} else static if( (!tr || !isComplexScalar!ElementType) && srcOrder == storageOrder && is( Source : typeof( this ) ) ) {
-			containerRef_ = ContainerRef( source.containerRef_.ptr );
+			if( source.empty )
+				containerRef_ = ConatinerRef();
+			else
+				containerRef_ = ContainerRef( source.containerRef_.ptr );
 		} else {
 			resize( source.rows, source.columns, null );
-			generalMatrixCopy!tr( source, this );
+			if( !empty )
+				generalMatrixCopy!tr( source, this );
 		}
 	}
 	
@@ -96,13 +103,16 @@ struct BasicGeneralMatrixStorage( ContainerRef_ ) {
 		return this;
 	}
 	
-	typeof( this ) slice( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd ) {
+	typeof( this ) slice( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd )
+	in {
+		checkSliceIndices_( rowStart, rowEnd, colStart, colEnd );
+	} body {
 		return typeof( return )( ContainerRef( containerRef_.ptr, rowStart, rowEnd - rowStart, colStart, colEnd - colStart ) );
 	}
 	
 	RowView row( size_t i )
 	in {
-		assert( i < rows, sliceMsg_(i,0,i,columns) );
+		checkSliceIndices_( i, i, 0, columns );
 	} body {
 		static if( isRowMajor )
 			return typeof( return )( containerRef_, i * leading, columns );
@@ -112,7 +122,7 @@ struct BasicGeneralMatrixStorage( ContainerRef_ ) {
 	
 	ColumnView column( size_t j )
 	in {
-		assert( j < columns, sliceMsg_(0,j,rows,j) );
+		checkSliceIndices_( 0, rows, j, j );
 	} body {
 		static if( isRowMajor )
 			return typeof( return )( containerRef_, j, rows, leading );
@@ -122,7 +132,7 @@ struct BasicGeneralMatrixStorage( ContainerRef_ ) {
 	
 	RowView rowSlice( size_t i, size_t start, size_t end )
 	in {
-		assert( i < rows && start < end && end <= columns, sliceMsg_(i,start,i,end) );
+		checkSliceIndices_( i, i, start, end );
 	} body {
 		static if( isRowMajor )
 			return typeof( return )( containerRef_, i * leading + start, end-start );
@@ -132,7 +142,7 @@ struct BasicGeneralMatrixStorage( ContainerRef_ ) {
 	
 	ColumnView columnSlice( size_t j, size_t start, size_t end )
 	in {
-		assert( j < columns && start < end && end <= rows, sliceMsg_(start,j,end,j) );
+		checkSliceIndices_( start, end, j, j );
 	} body {
 		static if( isRowMajor )
 			return typeof( return )( containerRef_, j + start * leading, end-start, leading );
@@ -140,11 +150,20 @@ struct BasicGeneralMatrixStorage( ContainerRef_ ) {
 			return typeof( return )( containerRef_, j * leading + start, end-start );
 	}
 	
-	View view( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd ) {
+	View view( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd )
+	in {
+		checkSliceIndices_( rowStart, rowEnd, colStart, colEnd );
+	} body {
 		return typeof( return )( containerRef_, rowStart, rowEnd - rowStart, colStart, colEnd - colStart );	
 	}
 	
-	void popFront() { containerRef_.popFront(); }
+	void popFront()
+	in {
+		checkNotEmpty_!"popFront"();
+	} body {
+		containerRef_.popFront();
+	}
+	
 	void popBack()  { containerRef_.popBack(); }
 	
 	@property {
@@ -161,11 +180,17 @@ struct BasicGeneralMatrixStorage( ContainerRef_ ) {
 			return this.major * this.leading;
 		}
 		
-		MajorView front() {
+		MajorView front()
+		in {
+			checkNotEmpty_!"front"();
+		} body {
 			return typeof(return)( containerRef_, 0, minor );
 		}
 		
-		MajorView back() {
+		MajorView back()
+		in {
+			checkNotEmpty_!"back"();
+		} body {
 			return typeof(return)( containerRef_, (containerRef_.major - 1) * containerRef_.minor, minor );
 		}
 	}
@@ -185,7 +210,7 @@ struct BasicGeneralMatrixStorage( ContainerRef_ ) {
 	
 	mixin GeneralMatrixScalingAndAddition;
 private:
-	mixin MatrixErrorMessages;
+	mixin MatrixChecks;
 
 	this()( ContainerRef containerRef ) {
 		containerRef_ = containerRef;

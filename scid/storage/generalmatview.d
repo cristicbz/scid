@@ -46,7 +46,10 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	alias BasicGeneralMatrixStorage!( TransposedOf!(MatrixTypeOf!ContainerRef) )
 		Transposed;
 	
-	this()( ref ContainerRef containerRef, size_t rowStart, size_t numRows, size_t colStart, size_t numCols, size_t offset=0 ) {
+	this()( ref ContainerRef containerRef, size_t rowStart, size_t numRows, size_t colStart, size_t numCols, size_t offset = 0 ) {
+		if( numRows == 0 || numCols == 0 )
+			return;
+				
 		containerRef_ = containerRef;
 		firstIndex_   = containerRef_.mapIndex( rowStart, colStart ) + offset;
 		rows_         = numRows;
@@ -75,7 +78,10 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 		return this;
 	}
 	
-	typeof( this ) slice( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd ) {
+	typeof( this ) slice( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd )
+	in {
+		checkSliceIndices_( rowStart, rowEnd, colStart, colEnd );
+	} body {
 		auto numRows = rowEnd - rowStart;
 		auto numCols = colEnd - colStart;	
 		return typeof( return )( containerRef_, rowStart, numRows, colStart, numCols, firstIndex_);
@@ -83,21 +89,23 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	
 	ElementType index( size_t i, size_t j ) const
 	in {
-		assert( i < rows_ && j < cols_, boundsMsg_(i, j) );
+		checkBounds_( i, j );
 	} body {
 		return containerRef_.cdata[ map_( i, j ) ];
 	}
 	
 	void indexAssign( string op = "" )( ElementType rhs, size_t i, size_t j )
 	in {
-		assert( i < rows_ && j < cols_, boundsMsg_(i, j) );
+		checkBounds_( i, j );
+	} out {
+		assert( index( i, j ) == rhs );
 	} body {
 		mixin( "containerRef_.data[ map_( i, j ) ]" ~ op ~ "= rhs;" );
 	}
 	
 	RowView row( size_t i )
 	in {
-		assert( i < rows, sliceMsg_(i,0,i,columns) );
+		checkSliceIndices_( i, i, 0, columns );
 	} body {
 		static if( isRowMajor )
 			return typeof( return )( containerRef_, firstIndex_ + i * leading, columns );
@@ -107,7 +115,7 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	
 	ColumnView column( size_t j )
 	in {
-		assert( j < columns, sliceMsg_(0,j,rows,j) );
+		checkSliceIndices_( 0, rows, j, j );
 	} body {
 		static if( isRowMajor )
 			return typeof( return )( containerRef_, firstIndex_ + j, rows, leading );
@@ -117,7 +125,7 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	
 	RowView rowSlice( size_t i, size_t start, size_t end )
 	in {
-		assert( i < rows_ && start < end && end <= cols_, sliceMsg_(i,start,i,end) );
+		checkSliceIndices_( i, i, start, end );
 	} body {
 		static if( isRowMajor )
 			return typeof( return )( containerRef_, i * leading + start + firstIndex_, end-start );
@@ -127,7 +135,7 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	
 	ColumnView columnSlice( size_t j, size_t start, size_t end )
 	in {
-		assert( j < cols_ && start < end && end <= rows_, sliceMsg_(start,j,end,j) );
+		checkSliceIndices_( start, end, j, j );
 	} body {
 		static if( isRowMajor )
 			return typeof( return )( containerRef_, j + start * leading + firstIndex_, end-start, leading );
@@ -138,7 +146,7 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	alias slice view;
 	
 	void resize( size_t rows, size_t columns, void* ) {
-		assert( rows == rows_ && cols_ == columns, dimMismatch_( rows, columns ) );
+		checkAssignDims_( rows, columns );
 	}
 	
 	void resize( size_t rows, size_t columns ) {
@@ -147,30 +155,36 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	}
 	
 	void copy( Transpose tr = Transpose.no, Source )( auto ref Source source )
-		if( isGeneralMatrixStorage!Source ) {
+			if( isGeneralMatrixStorage!Source ) {
 		resize( source.rows, source.columns, null );
-		generalMatrixCopy!tr( source, this );
+		if( !source.empty )
+			generalMatrixCopy!tr( source, this );
 	}
 	
 	void popFront()
 	in {
-		assert( !empty, msgPrefix_ ~ "popFront on empty." );
+		checkNotEmpty_!"popFront"();
 	} body {
 		-- major_;
-		firstIndex_ += leading_;
+		if( !major_ )
+			clear_();
+		else 
+			firstIndex_ += leading_;
 	}
 	
 	void popBack()
 	in {
-		assert( !empty, msgPrefix_ ~ "popFront on empty." );
+		checkNotEmpty_!"popBack"();
 	} body {
 		-- major_;
+		if( !major_ )
+			clear_();
 	}
 	
 	@property {
 		ref ContainerRef     container()        { return containerRef_; }
 		ElementType*         data()             { return containerRef_.data + firstIndex_ ; }
-		const(ElementType)*  cdata()      const { return containerRef_.cdata + firstIndex_; }
+		const(ElementType)*  cdata()      const { return isInitd_() ? containerRef_.cdata + firstIndex_ : null; }
 		bool                 empty()      const { return major_ == 0; }
 		size_t               length()     const { return major_; }
 		size_t               rows()       const { return rows_; }
@@ -180,12 +194,17 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 		size_t               leading()    const { return leading_; }
 		size_t               firstIndex() const { return firstIndex_; }
 		
-		MajorView front() {
-			
+		MajorView front()
+		in {
+			checkNotEmpty_!"front"();
+		} body {
 			return typeof( return )( containerRef_, firstIndex_, minor_ );
 		}
 		
-		MajorView back() {
+		MajorView back()
+		in {
+			checkNotEmpty_!"back"();
+		} body {
 			return typeof( return )( containerRef_, firstIndex_ + (major_ - 1) * leading_, minor_ );
 		}
 	}
@@ -199,7 +218,11 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	mixin GeneralMatrixScalingAndAddition;
 	
 private:
-	mixin MatrixErrorMessages;
+	mixin MatrixChecks;
+
+	bool isInitd_() const {
+		return containerRef_.RefCounted.isInitialized();	
+	}
 
 	size_t map_( size_t i, size_t j ) const {
 		static if( isRowMajor )
@@ -216,6 +239,12 @@ private:
 		alias cols_ major_;
 	}
 	
-	size_t    rows_, cols_, firstIndex_, leading_;
+	void clear_() {
+		// This is OK, right?
+		clear( this );
+	}
+	
+	size_t       rows_, cols_, firstIndex_;
+	size_t       leading_ = 1;              // BLAS/LAPACK require leading dimensions >=1 all the time
 	ContainerRef containerRef_;
 }

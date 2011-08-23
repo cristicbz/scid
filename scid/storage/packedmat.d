@@ -44,37 +44,43 @@ struct PackedStorage( ContainerRef_ ) {
 	
 	RowView row( size_t i )
 	in {
-		assert( i < this.rows, sliceMsg_( i,0, i,this.columns ) );
+		checkSliceIndices_( i, i, 0, columns );
 	} body {
 		return RowView( containerRef_, i, 0, this.columns );
 	}
 	
 	ColumnView column( size_t j )
 	in {
-		assert( j < this.columns, sliceMsg_( 0,j, this.rows,j ) );
+		checkSliceIndices_( 0, rows, j, j );
 	} body {
 		return ColumnView( containerRef_, j, 0, this.rows );
 	}
 	
 	RowView rowSlice( size_t i, size_t start, size_t end )
 	in {
-		assert( i < rows && start < end && end <= columns, sliceMsg_( i, start, i, end ) );
+		checkSliceIndices_( i, i, start, end );
 	} body {
 		return RowView( containerRef_, i, start, end - start );
 	}
 	
 	ColumnView columnSlice( size_t j, size_t start, size_t end )
 	in {
-		assert( j < columns && start < end && end <= columns, sliceMsg_( start,j, end,j ) );
+		checkSliceIndices_( start, end, j, j );
 	} body {
 		return ColumnView( containerRef_, j, start, end - start );
 	}
 	
-	View view( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd ) {
+	View view( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd )
+	in {
+		checkSliceIndices_( rowStart, rowEnd, colStart, colEnd );
+	} body {
 		return typeof( return )( containerRef_, rowStart, rowEnd - rowStart, colStart, colEnd - colStart );
 	}
 	
-	Slice slice( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd ) {
+	Slice slice( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd )
+	in {
+		checkSliceIndices_( rowStart, rowEnd, colStart, colEnd );
+	} body {
 		return typeof( return )( containerRef_, rowStart, rowEnd - rowStart, colStart, colEnd - colStart );
 	}
 	
@@ -90,15 +96,17 @@ struct PackedStorage( ContainerRef_ ) {
 	}
 	
 	@property {
-		auto front() {
-			static if( isRowMajor ) return row( 0 );
-			else                    return column( 0 );
-		}
 		
-		auto back() {
-			static if( isRowMajor ) return row( this.rows - 1 );
-			else                    return column( this.columns - 1 );
-		}
+		// -- This should be deduced by Matrix now -- //
+		//auto front() {
+		//	static if( isRowMajor ) return row( 0 );
+		//	else                    return column( 0 );
+		//}
+		//
+		//auto back() {
+		//	static if( isRowMajor ) return row( this.rows - 1 );
+		//	else                    return column( this.columns - 1 );
+		//}
 		
 		// workaround for alias this problems {
 		auto size()    const { return containerRef_.size; }
@@ -116,7 +124,7 @@ struct PackedStorage( ContainerRef_ ) {
 	ContainerRef containerRef_;
 	
 private:
-	mixin MatrixErrorMessages;
+	mixin MatrixChecks;
 }
 
 size_t packedArrayLength( size_t matrixSize ) {

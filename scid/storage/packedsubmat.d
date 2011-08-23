@@ -29,6 +29,9 @@ struct PackedSubMatrixStorage( ContainerRef_, SubMatrixType type_ ) {
 	enum storageType = MatrixStorageType.Virtual;
 	
 	this( ref ContainerRef containerRef, size_t rowStart, size_t numRows, size_t colStart, size_t numCols ) {
+		if( !numRows || !numCols )
+			return;
+		
 		assignMatrix_( containerRef );
 		rowStart_ = rowStart; rows_ = numRows;
 		colStart_ = colStart; cols_ = numCols;
@@ -55,67 +58,81 @@ struct PackedSubMatrixStorage( ContainerRef_, SubMatrixType type_ ) {
 	
 	ElementType index( size_t i, size_t j ) const 
 	in {
-		assert( i < rows_ && j < cols_, boundsMsg_(i, j) );
+		checkBounds_( i, j );
 	} body {
 		return containerRef_.index( i + rowStart_, j + colStart_ );
 	}
 	
 	void indexAssign( string op = "" )( ElementType rhs, size_t i, size_t j )
 	in {
-		assert( i < rows_ && j < cols_, boundsMsg_(i, j) );
+		checkBounds_( i, j );
+	} out {
+		assert( index( i, j ) == rhs );
 	} body {
 		containerRef_.indexAssign!op( rhs, i + rowStart_, j + colStart_ );
 	}
 	
 	RowView row( size_t i )
 	in {
-		assert( i < rows_, sliceMsg_(i,0,i,cols_) );
+		checkSliceIndices_( i,i, 0, columns );
 	} body {
 		return typeof( return )( containerRef_, i + rowStart_, colStart_, cols_ );
 	}
 	
 	ColumnView column( size_t j )
 	in {
-		assert( j < cols_, sliceMsg_(0,j,rows_,j) );
+		checkSliceIndices_( 0, rows, j, j );
 	} body {
 		return typeof( return )( containerRef_, j + colStart_, rowStart_, rows_ );
 	}
 	
 	RowView rowSlice( size_t i, size_t start, size_t end )
 	in {
-		assert( i < rows_ && start < end && end <= cols_, sliceMsg_(i,start,i,end) );
+		checkSliceIndices_( i, i, start, end );
 	} body {
 		return typeof( return )( containerRef_, i + rowStart_, start + colStart_, end - start );
 	}
 	
 	ColumnView columnSlice( size_t j, size_t start, size_t end )
 	in {
-		assert( j < cols_ && start < end && end <= rows_, sliceMsg_(start,j,end,j) );
+		checkSliceIndices_( start, end, j, j );
 	} body {
 		return typeof( return )( containerRef_, j + colStart_, start + rowStart_, end - start );
 	}
 	
-	View view( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd ) {
+	View view( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd )
+	in {
+		checkSliceIndices_( rowStart, rowEnd, colStart, colEnd );
+	} body {
 		return typeof( return )( containerRef_, rowStart + rowStart_, rowEnd - rowStart, colStart + colStart_, colEnd - colStart );
 	}
 	
-	Slice slice( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd ) {
+	Slice slice( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd )
+	in {
+		checkSliceIndices_( rowStart, rowEnd, colStart, colEnd );
+	} body {
 		return typeof( return )( containerRef_, rowStart + rowStart_, rowEnd - rowStart, colStart + colStart_, colEnd - colStart );
 	}
 	
 	void popFront()
 	in {
-		assert( !empty, msgPrefix_ ~ "popFront on empty." );
+		checkNotEmpty_!"popFront"();
 	} body {
-		static if( isRowMajor ) { ++ rowStart_; -- rows_; }
-		else                    { ++ colStart_; -- cols_; }
+		static if( isRowMajor ) ++ rowStart_;
+		else                    ++ colStart_;
+		
+		-- major_;
+		if( !major_ )
+			clear_();
 	}
 	
 	void popBack()
 	in {
-		assert( !empty, msgPrefix_ ~ "popBack on empty." );
+		checkNotEmpty_!"popBack"();
 	} body {
-		-- major_;	
+		-- major_;
+		if( !major_ )
+			clear_();
 	}
 	
 	static if( isRowMajor ) {
@@ -135,10 +152,9 @@ struct PackedSubMatrixStorage( ContainerRef_, SubMatrixType type_ ) {
 	}
 	
 	@property {
-		ContainerRef           matrix()        { return containerRef_; }
-		size_t              rows()    const { return rows_; }
-		size_t              columns() const { return cols_; }
-		bool                empty()   const { return major_ != 0; }
+		size_t rows()    const { return rows_; }
+		size_t columns() const { return cols_; }
+		bool   empty()   const { return major_ != 0; }
 		
 		auto front() {
 			static if( isRowMajor ) return row(0);
@@ -158,13 +174,18 @@ struct PackedSubMatrixStorage( ContainerRef_, SubMatrixType type_ ) {
 	}
 	
 private:
-	mixin MatrixErrorMessages;
+	mixin MatrixChecks;
 
 	void assignMatrix_( ref ContainerRef rhs ) {
 		static if( isView )
 			containerRef_ = rhs;
 		else
 			containerRef_ = ContainerRef( rhs.ptr );
+	}
+	
+	void clear_() {
+		// This is OK, right?
+		clear( this );
 	}
 
 	ContainerRef containerRef_;

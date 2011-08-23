@@ -6,71 +6,126 @@
 */
 module scid.internal.assertmessages;
 
-import std.string : format;
+import std.string;
 import std.range, std.conv;
 
-/** Error messages for array-like structs. */
-mixin template ArrayErrorMessages() {
-	/** Prefix for all error messages. */
-	private enum msgPrefix_ = typeof(this).stringof ~ ": ";
-	
-	/** Out of bounds error message. */
-	string boundsMsg_( size_t i ) const {
-		return format( msgPrefix_ ~ "Out of bounds %d vs. %d.", i, length );
-	}
+private alias to!string tos;
 
-	/** Invalid slice indices error message. */
-	string sliceMsg_( size_t s, size_t e ) const {
-		return format( msgPrefix_ ~ "Invalid slice indices [%d .. %d] vs. %d.", s, e, length );
+/** Checks and error messages for array-like structs. */
+mixin template ArrayChecks() {
+	/** Check that an index is within the bounds. */
+	void checkBounds_( size_t i ) const {
+		auto len = this.length;
+		assert( i < len, "Out of bounds: i = " ~ tos( i ) ~ ", length = " ~ tos( len ) );
 	}
 	
-	/** Invalid slice indices in slice assignment error message. */
-	string sliceAssignMsg_( size_t s, size_t e, size_t rl ) const {
-		return format( msgPrefix_ ~ "Slice assignment length mismatch [%d .. %d] with length %d vs %d.", s, e, e-s, rl );
+	/** Check that slice indices are valid. */
+	void checkSliceIndices_( size_t start, size_t end ) const {
+		auto len = this.length;
+		assert( start <= end && end <= len,
+			"Invalid slicing indices: start = " ~ tos( start ) ~ ", end = " ~ tos( end ) );
 	}
 	
-	/** (pop)front/back called on empty array. */
-	string emptyMsg_( string func ) const pure {
-		return msgPrefix_ ~ func ~ " called on empty.";
+	/** Check that the lengths in a slice assignment match. */
+	void checkSliceAssignLength_( size_t start, size_t end, size_t rhsLength ) const {
+		auto sliceLength = end - start;
+		auto len = this.length;
+		assert( start <= end && end <= len && sliceLength == rhsLength,
+			"Length mismatch in slice assignment: start = " ~ tos( start ) ~
+			", end = " ~ tos( end ) ~
+			", rhsLength = " ~ tos( rhsLength )
+		);
 	}
 	
-	/** Length mismatch in vector operation. */
-	string lengthMismatch_( size_t len, string op = "" ) const {
-		return format("%sLength mismatch in vector operation '%s': %d vs. %d.", msgPrefix_, op, length, len );
+	/** Check that the lengths in an assignment match. */
+	void checkAssignLength_( size_t rhsLength ) const {
+		auto len = this.length;
+		assert( len == rhsLength,
+			"Length mismatch in assignment: length = " ~ tos( len ) ~ ", rhsLength = " ~ tos( rhsLength ) ~ "."
+		);
 	}
 	
-	/** Constructed with length = 0. */
-	enum zeroDimMsg_ = msgPrefix_ ~ "Zero length in constructor.";
+	/** Check that the range is not empty. */
+	void checkNotEmpty_( string op = "function" )() const {
+		assert( !this.empty,
+			"Invalid " ~ op ~ " call on empty range." );
+	}
 }
 
-/** Error messages for array-like structs (matrix literal, storages and containers). */
-mixin template MatrixErrorMessages() {
-	/** Prefix for all error messages. */
-	enum msgPrefix_ = typeof(this).stringof ~ ": ";
-	
-	/** Out of bounds error message. */
-	string boundsMsg_( size_t i, size_t j ) const {
-		return format( msgPrefix_ ~ "Out of bounds [%d, %d] vs. [%d, %d].", i, j, rows, columns );
+/** Checks and error messages for matrix-like structs (matrix literal, storages and containers). */
+mixin template MatrixChecks() {
+	/** Check that an index is within the bounds. */
+	void checkBounds_( size_t i, size_t j ) const {
+		auto r = this.rows, c = this.columns;
+		assert( i < r && j < c, "Out of bounds: (i,j) = (" ~ tos( i ) ~ ", " ~ tos( j ) ~ "), dimensions = (" ~ tos( r ) ~ ", " ~ tos( c ) ~ ")" );
 	}
 	
-	/** Invalid slice indices error message. */
-	string sliceMsg_( size_t a, size_t b, size_t c, size_t d ) const {
-		return format( msgPrefix_ ~ "Invalid slice indices [%d .. %d][%d .. %d] vs. [%d, %d] .", a,c,b,d, rows, columns );
+	/** Check that slice indices are valid. */
+	void checkSliceIndices_( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd ) const {
+		auto r = this.rows, c = this.columns;
+		assert( rowStart <= rowEnd && rowEnd <= r && colStart <= colEnd && colEnd <= c,
+			"Invalid slicing indices [ " ~ tos( rowStart ) ~ " .. " ~ tos( rowEnd ) ~ " ][ "
+			~ tos( colStart ) ~ " .. " ~ tos( colEnd ) ~ "], dimensions = (" ~ tos( r ) ~ ", " ~ tos( c ) ~ ")"
+		);
 	}
 	
-	/** Invalid initializer error message. */
-	string initMsg_( size_t r, ElementType[] i ) const {
-		return format( msgPrefix_ ~ "Invalid initializer (%d, %s).", r, i );
+	/** Check that a built-in array of arrays is a valid general matrix. */
+	static void checkGeneralInitializer_( E )( E[][] mat ) {
+		debug {
+			import std.array;
+			
+			if( mat.empty )
+				return;
+			
+			size_t cols = mat[ 0 ].length;
+			foreach( i, row ; mat )
+				assert( row.length == cols,
+					"Inconsistent number of columns in general matrix initializer: row(0).length = " ~ tos( cols ) ~
+					", row(" ~ tos( i ) ~ ").length = " ~ tos( row.length )
+				);
+		}
 	}
 	
-	/** Dimension mismatch in matrix operation. */
-	string dimMismatch_( size_t r, size_t c, string op="" ) const {
-		return format("%sDimension mismatch in matrix operation '%s': (%d,%d) vs. (%d,%d).", msgPrefix_, op, rows, columns, r, c );
+	/** Check that a major dimension and an array form a valid general matrix initializer. */
+	static void checkGeneralInitializer_( E )( size_t majorDimension, E[] initializer ) {
+		assert( ( (majorDimension != 0) ^ initializer.empty) && initializer.length % majorDimension == 0,
+			"Invalid initializer for general matrix: majorDimension = " ~ tos( majorDimension ) ~
+			", initializer.length = " ~ tos( initializer.length )
+		);
 	}
 	
-	/** Zero dimension eror message */
-	string zeroDimMsg_( size_t r, size_t c ) const {
-		return format( msgPrefix_ ~ "Zero dimension in [%d, %d].", r, c );
+	/** Check triangular initializer. */
+	static void checkTriangularInitializer_( E )( E[] initializer ) {
+		debug {
+			import std.math;
+			
+			auto tri  = (sqrt( initializer.length * 8.0 + 1.0 ) - 1.0 ) / 2.0;
+			assert( tri - cast(int) tri <= 0,
+				"Initializer length is not triangular number: initializer.length = " ~ tos( initializer.length )
+			);
+		}
+	}
+	
+	/** Check that dimensions passed to a square matrix type are equal. */
+	static void checkSquareDims_( string matrixType = "square" )( size_t newRows, size_t newCols ) {
+		assert( newRows == newCols,
+				"Non-square dimensions for " ~ matrixType ~ " matrix (" ~ tos( newRows ) ~ ", " ~ tos( newCols ) ~ ")"
+		);
+	}
+	
+	/** Check that the range is not empty. */
+	void checkNotEmpty_( string op = "function" )() const {
+		assert( !this.empty,
+			"Invalid " ~ op ~ " call on empty range." );
+	}
+	
+	/** Check that dimensions match in assignment. */
+	void checkAssignDims_( size_t rhsRows, size_t rhsColumns ) const {
+		auto r = this.rows, c = this.columns;
+		assert( r == rhsRows && c == rhsColumns,
+			"Dimension mismatch in matrix assignment: lhsDims = (" ~ tos( r ) ~ ", " ~ tos( c ) ~ "), rhsDims = (" ~
+			tos( rhsRows ) ~ ", " ~ tos( rhsColumns ) ~ ")"
+		);
 	}
 }
 
@@ -92,7 +147,7 @@ string stridedToString( S )( const(S)* ptr, size_t len, size_t stride ) {
 	
 string matrixToString( S )( char trans, size_t m, size_t n, const(S)* a, size_t lda )
 in {
-	assert( a );
+	assert( a || (!m || !n) );
 } body {
 	if( m == 0 || n == 0 )
 		return "[]";

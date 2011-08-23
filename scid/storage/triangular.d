@@ -9,6 +9,7 @@ import scid.ops.expression;
 import std.math, std.algorithm;
 import std.exception;
 import scid.storage.external;
+import std.array, std.conv;
 
 template TriangularStorage( ElementOrArray, MatrixTriangle triangle = MatrixTriangle.Upper, StorageOrder storageOrder = StorageOrder.ColumnMajor )
 	if( isScalar!(BaseElementType!ElementOrArray) ) {
@@ -41,24 +42,37 @@ struct TriangularArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder 
 	this( A ... )( size_t newSize, A arrayArgs ) {
 		size_  = newSize;
 		static if( A.length == 0 || !is( A[ 0 ] : size_t ) ) {
+			if( !newSize )
+				return;
+			
 			containerRef_ = ContainerRef( newSize * (newSize + 1) / 2, arrayArgs );
 		} else {
-			assert( arrayArgs[0] == newSize,
-				format( "Non-square dimensions for triangular matrix (%d,%d).", newSize, arrayArgs[ 0 ] ) );
+			if( !newSize || !arrayArgs[ 0 ] )
+				return;
+			
+			checkSquareDims_!"triangular"( newSize, arrayArgs[ 0 ] );
 			containerRef_ = ContainerRef( newSize * (newSize + 1) / 2, arrayArgs[ 1 .. $ ] );
 		}
 	}
 	
-	this( E )( E[] initializer ) if( isConvertible!( E, ElementType ) ) {
+	this( E )( E[] initializer ) if( isConvertible!( E, ElementType ) )
+	in {
+		checkTriangularInitializer_( initializer );
+	} body {
+		if( initializer.empty )
+			return;
+		
 		auto tri  = (sqrt( initializer.length * 8.0 + 1.0 ) - 1.0 ) / 2.0;
-		
-		enforce( tri - cast(int) tri <= 0, msgPrefix_ ~ "Initializer list is not triangular." );
-		
 		size_  = cast(size_t) tri;
 		containerRef_ = ContainerRef( to!(ElementType[])(initializer) );
 	}
 	
-	this()( ElementType[][] initializer ) {
+	this()( ElementType[][] initializer )
+	in {
+		checkGeneralInitializer_( initializer );
+		if( !initializer.empty )
+			checkSquareDims_!"symmetric"( initializer.length, initializer[ 0 ].length );
+	} body {
 		if( !initializer.length )
 			return;
 		
@@ -77,14 +91,19 @@ struct TriangularArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder 
 	}
 	
 	this()( TriangularArrayAdapter *other ) {
-		containerRef_ = ContainerRef( other.containerRef_.ptr );
+		if( other.isInitd_ )
+			containerRef_ = ContainerRef( other.containerRef_.ptr );
+		else
+			containerRef_ = ContainerRef.init;
+		
 		size_  = other.size_;
 	}
 	
-	void resize( A ... )( size_t newRows, size_t newCols, A arrayArgs ) {
+	void resize( A ... )( size_t newRows, size_t newCols, A arrayArgs )
+	in {
+		checkSquareDims_!"triangular"( newRows, newCols );
+	} body {
 		size_t arrlen = packedArrayLength(newRows);
-		
-		enforce( newRows == newCols );
 		
 		if( !isInitd_ )
 			containerRef_ = ContainerRef( arrlen, arrayArgs );
@@ -102,7 +121,7 @@ struct TriangularArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder 
 	
 	ElementType index( size_t i, size_t j ) const
 	in {
-		assert( i < size_ && j < size_, boundsMsg_(i,j) );
+		checkBounds_( i , j );
 	} body {
 		static if( isUpper ) {
 			if( i > j )
@@ -117,19 +136,21 @@ struct TriangularArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder 
 	
 	private void indexAssign(string op = "" )( ElementType rhs, size_t i, size_t j )
 	in {
-		assert( i < size_ && j < size_, boundsMsg_(i,j) );
+		checkBounds_( i , j );
 		static if( isUpper )
 			assert( i <= j, "Modification of zero element in triangle matrix." );
 		else
 			assert( i >= j, "Modification of zero element in triangle matrix." );
+	}  out {
+		assert( index( i, j ) == rhs );
 	} body {
 		containerRef_.indexAssign!op(rhs, map_( i, j ) );
 	}
 	
 	@property {
 		typeof(this)*       ptr()         { return &this; }
-		ElementType*        data()        { return containerRef_.data; }
-		const(ElementType)* cdata() const { return containerRef_.cdata; }
+		ElementType*        data()        { return isInitd_() ? containerRef_.data  : null; }
+		const(ElementType)* cdata() const { return isInitd_() ? containerRef_.cdata : null; }
 		size_t              size()  const { return size_; }
 	}
 	
@@ -146,12 +167,12 @@ struct TriangularArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder 
 	}
 	
 private:
+	mixin MatrixChecks;
+
 	bool isInitd_() const {
 		// TODO: This assumes the reference type is RefCounted. Provide a more general impl.
 		return containerRef_.RefCounted.isInitialized();	
 	}
-	
-	mixin MatrixErrorMessages;
 
 	enum zero_ = cast(ElementType)(0.0);
 		

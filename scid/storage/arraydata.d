@@ -11,8 +11,9 @@ import core.stdc.stdlib;
 import std.algorithm, std.conv;
 
 import scid.blas;
+import scid.internal.assertmessages;
 
-//debug = ArrayDataAllocs;
+//debug = ArrayData;
 
 debug( ArrayData ) {
 	debug = ArrayDataAllocs;
@@ -94,7 +95,7 @@ struct ArrayData( T ) {
 	
 	/** Returns the number of references to the data, or zero if there is no data. */
 	size_t refCount() const {
-		if( data_ )
+		if( isInitialized() )
 			return data_.refCount;
 		else
 			return 0;
@@ -149,8 +150,7 @@ struct ArrayData( T ) {
 	/** Indexing operators. */
 	T opIndex( size_t i ) const
 	in {
-		assert( isInitialized() );
-		assert( i < data_.length, "Out of bounds " ~ to!string(i) ~ " >= " ~ to!string(data_.length) );
+		checkBounds_( i );
 	} body {
 		return *(data_.ptr+i);
 	}
@@ -158,8 +158,7 @@ struct ArrayData( T ) {
 	/// ditto
 	void opIndexAssign( T rhs, size_t i )
 	in {
-		assert( isInitialized() );
-		assert( i < data_.length, "Out of bounds " ~ to!string(i) ~ " >= " ~ to!string(data_.length) );
+		checkBounds_( i );
 	} body {
 		*(data_.ptr+i) = rhs;
 	}
@@ -167,8 +166,7 @@ struct ArrayData( T ) {
 	/// ditto
 	void opIndexOpAssign( string op )( T rhs, size_t i )
 	in {
-		assert( isInitialized() );
-		assert( i < data_.length, "Out of bounds " ~ to!string(i) ~ " >= " ~ to!string(data_.length) );
+		checkBounds_( i );
 	} body {
 		mixin( "*(data_.ptr+i)" ~ op ~ "= rhs;" );
 	}
@@ -211,7 +209,7 @@ struct ArrayData( T ) {
 	// the data if neccessary. It also sets data_ to null.
 	private void deref_() {
 		if( !data_ ) return;
-		assert( data_.refCount > 0, "Zero refCount." );
+		assert( data_.refCount > 0, "Zero refCount befor dereferencing." );
 		--data_.refCount;
 		if( data_.refCount == 0 ) {
 			debug(ArrayDataAllocs)
@@ -258,6 +256,9 @@ struct ArrayData( T ) {
 	
 	// A pointer to the referenced data.
 	private Data_ *data_ = null;
+	
+private:
+	mixin ArrayChecks;
 }
 
 

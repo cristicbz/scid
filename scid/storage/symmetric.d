@@ -9,6 +9,7 @@ import scid.ops.common;
 import std.math, std.algorithm;
 import std.complex, std.exception;
 import scid.storage.external;
+import std.array, std.conv;
 
 
 template SymmetricStorage( ElementOrArray, MatrixTriangle triangle = MatrixTriangle.Upper, StorageOrder storageOrder = StorageOrder.ColumnMajor )
@@ -50,24 +51,37 @@ struct SymmetricArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder s
 	this( A ... )( size_t newSize, A arrayArgs ) {
 		size_  = newSize;
 		static if( A.length == 0 || !is( A[ 0 ] : size_t ) ) {
+			if( !newSize )
+				return;
+			
 			containerRef_ = ContainerRef( newSize * (newSize + 1) / 2, arrayArgs );
 		} else {
-			assert( arrayArgs[0] == newSize,
-				format( "Non-square dimensions for triangular matrix (%d,%d).", newSize, arrayArgs[ 0 ] ) );
+			if( !newSize || !arrayArgs[ 0 ] )
+				return;
+			
+			checkSquareDims_!"symmetric"( newSize, arrayArgs[ 0 ] );
 			containerRef_ = ContainerRef( newSize * (newSize + 1) / 2, arrayArgs[ 1 .. $ ] );
 		}
 	}
 	
-	this()( ElementType[] initializer ) {
+	this( E )( E[] initializer ) if( isConvertible!( E, ElementType ) )
+	in {
+		checkTriangularInitializer_( initializer );
+	} body {
+		if( initializer.empty )
+			return;
+		
 		auto tri  = (sqrt( initializer.length * 8.0 + 1.0 ) - 1.0 ) / 2.0;
-		
-		assert( tri - cast(int) tri <= 0, msgPrefix_ ~ "Initializer list is not triangular." );
-		
 		size_  = cast(size_t) tri;
-		containerRef_ = ContainerRef( initializer );
+		containerRef_ = ContainerRef( to!(ElementType[])(initializer) );
 	}
 	
-	this()( ElementType[][] initializer ) {
+	this()( ElementType[][] initializer )
+	in {
+		checkGeneralInitializer_( initializer );
+		if( !initializer.empty )
+			checkSquareDims_!"symmetric"( initializer.length, initializer[ 0 ].length );
+	} body {
 		if( !initializer.length )
 			return;
 		
@@ -86,14 +100,19 @@ struct SymmetricArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder s
 	}
 	
 	this()( SymmetricArrayAdapter *other ) {
-		containerRef_ = ContainerRef( other.containerRef_.ptr );
+		if( other.isInitd_ )
+			containerRef_ = ContainerRef( other.containerRef_.ptr );
+		else
+			containerRef_ = ContainerRef.init;
+		
 		size_  = other.size_;
 	}
 	
-	void resize( A ... )( size_t newRows, size_t newCols, A arrayArgs ) {
+	void resize( A ... )( size_t newRows, size_t newCols, A arrayArgs )
+	in {
+		checkSquareDims_!"symmetric"( newRows, newCols );
+	} body {
 		size_t arrlen = packedArrayLength(newRows);
-		
-		enforce( newRows == newCols );
 		
 		if( !isInitd_ )
 			containerRef_ = ContainerRef( arrlen, arrayArgs );
@@ -111,8 +130,7 @@ struct SymmetricArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder s
 
 	ElementType index( size_t row, size_t column ) const
 	in {
-		assert( row < size_ );
-		assert( column < size_ );
+		checkBounds_( row, column );
 	} body {
 		if( needSwap_( row, column ) ) {
 			static if( isHermitian ) {
@@ -127,8 +145,9 @@ struct SymmetricArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder s
 
 	void indexAssign(string op="")( ElementType rhs, size_t row, size_t column )
 	in {
-		assert( row < size_ );
-		assert( column < size_ );
+		checkBounds_( row, column );
+	} out {
+		assert( index( row, column ) == rhs );
 	} body {
 		if( needSwap_( row, column ) ) {
 			static if( isHermitian ) {
@@ -161,7 +180,7 @@ struct SymmetricArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder s
 	}
 	
 private:
-	mixin MatrixErrorMessages;
+	mixin MatrixChecks;
 
 	size_t mapHelper_( bool colUpper )( size_t i, size_t j ) const {
 		static if( colUpper ) return i + j * (j + 1) / 2;

@@ -11,6 +11,7 @@ import scid.storage.cowmatrix;
 import scid.storage.external;
 import scid.storage.constant;
 import scid.common.traits;
+import scid.common.meta;
 
 import std.algorithm, std.range, std.conv;
 
@@ -261,13 +262,15 @@ struct BasicMatrix( Storage_ ) {
 	}
 	
 	/** Element access. Forwarded to the storage.indexAssign method. */
-	void opIndexAssign( ElementType rhs, size_t i, size_t j ) {
+	ElementType opIndexAssign( ElementType rhs, size_t i, size_t j ) {
 		storage.indexAssign( rhs, i, j );
+		return rhs;
 	}
 	
 	/** Element access. Forwarded to the storage.indexAssign!op method. */
-	void opIndexOpAssign( string op )( ElementType rhs, size_t i, size_t j ) {
+	ElementType opIndexOpAssign( string op )( ElementType rhs, size_t i, size_t j ) {
 		storage.indexAssign!op( rhs, i, j );	
+		return storage.index( i, j );
 	}
 	
 	/** Get a view of the matrix. Forwarded to the storage.view method. */
@@ -365,8 +368,7 @@ struct BasicMatrix( Storage_ ) {
 		static if( isResizable ) {
 			storage.resize( newRows, newColumns, null );
 		} else {
-			assert( rows == newRows && columns == newColumns,
-				dimMismatch_( newRows, newColumns ) );
+			checkAssignDims_( newRows, newColumns );
 		}
 	}
 	
@@ -394,7 +396,7 @@ struct BasicMatrix( Storage_ ) {
 		/** Return the first row for row-major matrices or the first column for column-major matrices. */
 		MajorView front()
 		in {
-			assert( !empty(), msgPrefix_ ~ "front on empty." );
+			checkNotEmpty_!"front"();
 		} body {
 			static if( isRowMajor )
 				return storage.row( 0 );
@@ -405,7 +407,7 @@ struct BasicMatrix( Storage_ ) {
 		/** Return the last row for row-major matrices or the last column for column-major matrices. */
 		MajorView back()
 		in {
-			assert( !empty(), msgPrefix_ ~ "back on empty." );
+			checkNotEmpty_!"back"();
 		} body {
 			static if( isRowMajor )
 				return storage.row( storage.rows - 1 );
@@ -574,7 +576,7 @@ struct BasicMatrix( Storage_ ) {
 		
 		void popFront()
 		in {
-			assert( !empty,	"popFront on empty" );
+			checkNotEmpty_!"front"();
 		} body {
 			++ start_;	
 		}
@@ -591,12 +593,20 @@ struct BasicMatrix( Storage_ ) {
 	}
 	
 private:
-	mixin MatrixErrorMessages;
+	mixin MatrixChecks;
 }
 
 /** Matrix inversion. */
 Expression!( "inv", M ) inv( M )( auto ref M matrix ) if( closureOf!M == Closure.Matrix ) {
 	return typeof( return )( matrix );	
+}
+
+auto inv( ScalarExpr )( auto ref ScalarExpr expr ) if( closureOf!ScalarExpr == Closure.Scalar && !isLeafExpression!ScalarExpr ) {
+	return One!(BaseElementType!ScalarExpr) / expr;
+}
+
+ScalarType inv( ScalarType )( ScalarType expr ) if( isScalar!ScalarType ) {
+	return One!ScalarType / expr;
 }
 
 

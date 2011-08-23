@@ -99,7 +99,7 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 		/** Construct a view from a container reference, a start index, length and a stride. */
 		this()( ref ContainerRef containerRef, size_t iFirstIndex, size_t iLength, size_t iStride )
 		in {
-			assert( iStride != 0, strideMsg_ );
+			assert( iStride != 0, "Zero stride in view construction" );
 		} body {
 			containerRef_ = containerRef;
 			setParams_( iFirstIndex, iLength, iStride );
@@ -140,7 +140,7 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 	/** Element access forwarded to the container. Part of the VectorStorage concept. */
 	ElementType index( size_t i ) const
 	in {
-		assert( i < length, boundsMsg_( i ) );
+		checkBounds_( i );
 	} body {
 		return containerRef_.cdata[ map_( i ) ];
 	}
@@ -151,45 +151,41 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 	*/
 	void indexAssign( string op="" )( ElementType rhs, size_t i )
 	in {
-		assert( i < length, boundsMsg_( i ) );
+		checkBounds_( i );
 	} body {
 		mixin("containerRef_.data[ map_( i ) ] " ~ op ~ "= rhs;");
-	}
-	
-	/** Returns a slice of the array. Part of the VectorStorage concept. */
-	typeof(this) slice( size_t start, size_t end )
-	in {
-		assert( start < end && end <= length, sliceMsg_( start, end ) );
-	} body {
-		static if( isStrided )
-			return typeof( this )( containerRef_, map_(start), end - start, stride_ );
-		else
-			return typeof( this )( containerRef_, map_(start), end - start );
 	}
 	
 	/** Returns a another contiguous view of the array. Part of the VectorStorage concept. */
 	View view( size_t start, size_t end )
 	in {
-		assert( start < end && end <= length, sliceMsg_(start, end) );
+		checkSliceIndices_( start, end );
 	} body {
 		static if( isStrided )
-			return typeof( return )( containerRef_, start, end-start, stride_ );
+			return typeof( return )( containerRef_, map_(start), end-start, stride_ );
 		else
-			return typeof( return )( containerRef_, start, end-start );
+			return typeof( return )( containerRef_, map_(start), end-start );
 	}
 	
 	/** Returns another strided view of the array. Part of the VectorStorage concept. */
 	StridedView view( size_t start, size_t end, size_t newStride )
 	in {
-		assert( newStride != 0, strideMsg_ );
-		assert( start < end && end <= length, sliceMsg_(start, end) );
+		assert( newStride != 0, "Zero stride in view-of-view construction." );
+		checkSliceIndices_( start, end );
 	} body {
 		size_t len = (end - start);
 		len = len / newStride + ( (len % newStride) != 0 );
-		static if( isStrided )
+		static if( isStrided ) {
 			newStride *= stride_;
-		return typeof( return )( containerRef_, start, len, newStride );
+			return typeof( return )( containerRef_, map_(start), len, newStride );
+		} else {
+			return typeof( return )( containerRef_, map_(start), len, newStride );
+		}
 	}
+	
+	/** Returns a slice of the array. Part of the VectorStorage concept. */
+	alias view slice;
+	
 	
 	/** Check if the length is the same as the one given and zero out all the elements. Part of the VectorStorage concept. */
 	void resize( size_t rlength ) {
@@ -213,7 +209,7 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 	/** Forward range methods to the wrapped container. */
 	void popFront()
 	in {
-		assert( !empty, msgPrefix_ ~ "popFront() on empty." );
+		checkNotEmpty_!"popFront"();
 	} body {
 		
 		static if( isStrided ) {
@@ -226,7 +222,7 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 	/// ditto
 	void popBack()
 	in {
-		assert( !empty, msgPrefix_ ~ ": popBack() on empty." );
+		checkNotEmpty_!"popBack"();
 	} body {
 		-- length_;
 	}
@@ -239,7 +235,10 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 		
 		/** Get a mutable pointer to the memory used by this storage. */
 		const(ElementType)* cdata() const {
-			return containerRef_.cdata + firstIndex_;
+			if( isInitd_() )
+				return containerRef_.cdata + firstIndex_;
+			else
+				return null;
 		}
 		
 		/** The index in the array at which this view starts. */
@@ -260,7 +259,7 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 		/// ditto
 		void front( ElementType newValue )
 		in {
-			assert( !empty, msgPrefix_ ~ "front assign on empty." );
+			checkNotEmpty_!"front setter"();
 		} body {
 			indexAssign( newValue, 0 );
 		}
@@ -268,7 +267,7 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 		/// ditto
 		void back( ElementType newValue  )
 		in {
-			assert( !empty, msgPrefix_ ~ "back assign on empty." );
+			checkNotEmpty_!"back setter"();
 		} body {
 			indexAssign( newValue, length - 1 );
 		}
@@ -276,7 +275,7 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 		/// ditto
 		ElementType front() const
 		in {
-			assert( !empty, msgPrefix_ ~ "front get on empty." );
+			checkNotEmpty_!"front"();
 		} body {
 			return this.index( 0 );
 		}
@@ -284,7 +283,7 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 		/// ditto
 		ElementType back() const
 		in {
-			assert( !empty, msgPrefix_ ~ "back get on empty." );
+			checkNotEmpty_!"back"();
 		} body {
 			return index( length_ - 1 );
 		}
@@ -303,9 +302,7 @@ struct BasicArrayViewStorage( ContainerRef_, ArrayViewType strided_, VectorType 
 	}
 	
 private:
-	mixin ArrayErrorMessages;
-
-	enum strideMsg_ = msgPrefix_ ~ "Zero stride is impossible.";
+	mixin ArrayChecks;
 
 	static if( isStrided ) {		
 		void setParams_( size_t f, size_t l, size_t s ) {
@@ -328,6 +325,10 @@ private:
 		size_t map_( size_t i ) const {
 			return i + firstIndex_;
 		}
+	}
+	
+	bool isInitd_() const {
+		return containerRef_.RefCounted.isInitialized();	
 	}
 	
 	size_t firstIndex_, length_;

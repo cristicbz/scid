@@ -117,6 +117,9 @@ mixin template GeneralMatrixScalingAndAddition() {
 		import scid.lapack;
 		import std.exception;
 		
+		if( this.empty )
+			return;
+		
 		int info;
 		size_t n = this.rows;
 		assert( n == this.columns, "Inversion of non-square matrix." );
@@ -135,6 +138,9 @@ mixin template GeneralMatrixScalingAndAddition() {
 		import scid.blas;
 		import scid.lapack;
 		import std.exception;
+		
+		if( this.empty && dest.empty )
+			return;
 		
 		size_t n = this.rows;                                           // check that the matrix is square
 		assert( n == this.columns, "Inversion of non-square matrix." );
@@ -339,7 +345,7 @@ void generalMatrixCopy( Transpose tr, S, D )( auto ref S source, auto ref D dest
 	alias storageOrderOf!D dstOrder;
 	
 	static if( !isComplexScalar!T ) {
-		blas.xgecopy!( (srcOrder == dstOrder) ? 't' : 'n')(
+		blas.xgecopy!( (srcOrder == dstOrder) ? 'N' : 'T')(
 			dest.rows,
 			dest.columns,
 			source.cdata,
@@ -350,24 +356,24 @@ void generalMatrixCopy( Transpose tr, S, D )( auto ref S source, auto ref D dest
 	} else static if( isComplexScalar!T ) {
 		static if( srcOrder == dstOrder ) {
 			static if( tr ) {
-				blas.xgecopyc!'n'( dest.rows, dest.columns,
+				blas.xgecopyc!'N'( dest.rows, dest.columns,
 					source.cdata, source.leading,
 					dest.data,    dest.leading
 				);
 			} else {
-				blas.xgecopy!'n'( dest.rows, dest.columns,
+				blas.xgecopy!'N'( dest.rows, dest.columns,
 					source.cdata, source.leading,
 					dest.data,    dest.leading
 				);
 			}
 		} else {
 			static if( tr ) {
-				blas.xgecopy!'c'( dest.rows, dest.columns,
+				blas.xgecopy!'C'( dest.rows, dest.columns,
 					source.cdata, source.leading,
 					dest.data,    dest.leading
 				);
 			} else {
-				blas.xgecopy!'t'( dest.rows, dest.columns,
+				blas.xgecopy!'T'( dest.rows, dest.columns,
 					source.cdata, source.leading,
 					dest.data,    dest.leading
 				);

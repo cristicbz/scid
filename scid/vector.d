@@ -192,13 +192,13 @@ auto view4 = ExternalVectorView!double(arr, alloc);
 ---
 */
 ExternalVectorView!( T, vectorType ) 
-externalVectorView( T, VectorType vectorType = VectorType.Column )( T[] array ) {
+externalVectorView( VectorType vectorType = VectorType.Column, T )( T[] array ) {
     return typeof(return)(array);
 }
 
 /// Ditto
 ExternalVectorView!( T, vectorType ) 
-externalVectorView( T, VectorType vectorType = VectorType.Column, Allocator )
+externalVectorView( VectorType vectorType = VectorType.Column, T, Allocator )
 ( T[] array, Allocator alloc ) {
     return typeof(return)(array, alloc);
 }
@@ -284,12 +284,14 @@ struct BasicVector( Storage_ ) {
 		return storage.index( i );
 	}
 	
-	void opIndexAssign( ElementType rhs, size_t i ) {
+	ElementType opIndexAssign( ElementType rhs, size_t i ) {
 		storage.indexAssign( rhs, i );
+		return rhs;
 	}
 	
-	void opIndexOpAssign( string op )( ElementType rhs, size_t i ) {
+	ElementType opIndexOpAssign( string op )( ElementType rhs, size_t i ) {
 		storage.indexAssign!op( rhs, i );
+		return storage.index( i );
 	}
 	
 	ref typeof(this) opAssign( typeof(this) rhs ) {
@@ -344,8 +346,9 @@ struct BasicVector( Storage_ ) {
 			evalCopy( ExternalVectorView!( E, vectorType )( rhs ), this );
 		else static if( closureOf!Rhs == Closure.Scalar )
 			evalCopy( relatedConstant( rhs, this ), this );
-		else
+		else {
 			evalCopy( rhs, this );
+		}
 		
 	}
 	
@@ -403,7 +406,7 @@ struct BasicVector( Storage_ ) {
 		
 		ElementType front() const
 		in {
-			assert( !empty, emptyMsg_("front") );	
+			checkNotEmpty_!"front"();
 		} body {
 			static if( is( typeof(Storage.init.front) ) )
 				return storage.front;
@@ -413,12 +416,16 @@ struct BasicVector( Storage_ ) {
 		
 		ElementType back() const
 		in {
-			assert( !empty, emptyMsg_("back") );
+			checkNotEmpty_!"front"();
 		} body {
 			static if( is( typeof(Storage.init.back) ) )
 				return storage.back;
 			else
 				return storage.index( storage.length - 1 );
+		}
+		
+		typeof( this ) save() {
+			return typeof( this )( storage );	
 		}
 	}
 	
@@ -452,9 +459,9 @@ struct BasicVector( Storage_ ) {
 	}
 	
 	Storage storage;
-
+	
 private:
-	mixin ArrayErrorMessages;	
+	mixin ArrayChecks;
 }
 
 unittest {
