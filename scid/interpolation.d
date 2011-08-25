@@ -5,7 +5,7 @@
   *
   * This is an alpha version. The interface can be changed.
   *
-  * Version: 0.3-a
+  * Version: 0.3.1-a
   * Authors: Maksim Zholudev
   * Copyright: Copyright (c) 2011, Maksim Zholudev. All rights reserved.
   * License: Boost License 1.0
@@ -16,8 +16,9 @@ module scid.interpolation;
 // FIXME: add "in" and "out" qualifiers for function arguments
 
 import std.math;
-import std.algorithm;
+import std.range;
 import scid.common.traits;
+import scid.common.meta;
 import scid.vector;
 
 /// The type of optimization
@@ -60,6 +61,9 @@ mixin template splineBase(EocVar, EocFunc)
 
     alias ProduceArray!EocVar VarArray;
     alias ProduceArray!EocFunc FuncArray;
+    static assert(isRandomAccessRange!(VarArray), "Illegal variable type");
+    static assert(isRandomAccessRange!(FuncArray), "Illegal function type");
+
     alias BaseElementType!VarArray VarType;
     alias BaseElementType!FuncArray FuncType;
 
@@ -79,7 +83,9 @@ mixin template splineBase(EocVar, EocFunc)
 
     public
     {
-        @property const length()
+        /** Number of points.
+          */
+        @property const pointsNum()
         {
             return _x.length;
         }
@@ -110,6 +116,15 @@ mixin template splineBase(EocVar, EocFunc)
             setFunc(f);
         }
 
+        /** Test whether given point is inside spline range
+          */
+        bool pointInsideRange(VarType x)
+        {
+            /* TODO: change pointsNum to $
+               when opDollar will be implemented */
+            return (x >= _x[0]) && (x <= _x[pointsNum-1]);
+        }
+
         /** Calculate the interpolant data. Makes it ready for function
           * evaluation.
           */
@@ -122,11 +137,7 @@ mixin template splineBase(EocVar, EocFunc)
                    "Not enough points for interpolation");
             for(size_t i = 0; i < _x.length - 1; ++i)
                 assert(_x[i] < _x[i+1],
-                       "Variable value array is not sorted in ascending order");
-            /* FIXME: use isSorted when random-access interface
-               will be implemented for vectors */
-            /*assert(isSorted(_x),
-                   "Variable value array is not sorted in ascending order");*/
+                       "Variable value array must be strictly sorted ascending");
         }
         body
         {
@@ -218,8 +229,7 @@ struct SplineView(Tspline)
         FuncType eval(VarType x)
         in
         {
-            // TODO: change _spline.length to $ when Vector implement opDollar
-            assert((x >= _spline._x[0]) && (x <= _spline._x[_spline.length-1]),
+            assert(_spline.pointInsideRange(x),
                    "Variable value out of interpolation range");
         }
         body
@@ -235,8 +245,7 @@ struct SplineView(Tspline)
         FuncType deriv(VarType x)
         in
         {
-            // TODO: change _spline.length to $ when Vector implement opDollar
-            assert((x >= _spline._x[0]) && (x <= _spline._x[_spline.length-1]),
+            assert(_spline.pointInsideRange(x),
                    "Variable value out of interpolation range");
         }
         body
@@ -451,7 +460,7 @@ struct SplineCubic(EocVar, EocFunc,
                 if(_bcLeftType == BoundCond.periodic)
                 {
                     // The index of the last point of spline
-                    size_t N = _x.length - 1;
+                    size_t N = pointsNum - 1;
                     // Some variables for optimization
                     VarType h0 = _x[1] - _x[0];
                     FuncType v0 = _f[1] - _f[0];
@@ -463,18 +472,18 @@ struct SplineCubic(EocVar, EocFunc,
 
                     // Boundary conditions on the left side (the first equation)
                     // TODO: optimize
-                    VarType hf = _x[length-1] - _x[length-2];
+                    VarType hf = _x[pointsNum-1] - _x[pointsNum-2];
                     a0 = 1 / hf;
                     a2 = 1 / h0;
                     a1 = 2 * (a0 + a2);
                     b = 3 * ((_f[1] - _f[0]) / (h0 * h0)
-                             + (_f[0] - _f[length-2]) / (hf * hf));
+                             + (_f[0] - _f[pointsNum-2]) / (hf * hf));
 
                     // Build'n'sweep forward
 
                     // First step
                     _wa[0] = 0;
-                    _wb[0] = 0;
+                    _wb[0] = Zero!(FuncType);
                     _wc[0] = 1;
                     // TODO: _wa -> _c3, wb -> _c1 _wc -> c2
                     for(size_t i = 1; i < N; ++i)
@@ -503,7 +512,7 @@ struct SplineCubic(EocVar, EocFunc,
                     a0 = 0;
                     a1 = 1;
                     a2 = -1;
-                    b = 0;
+                    b = Zero!(FuncType);
 
                     // TODO: optimize
                     VarType factor = 1 / (a1 + a0 * _wa[N - 1]);
@@ -514,7 +523,7 @@ struct SplineCubic(EocVar, EocFunc,
                     // Sweep backward
                     // TODO: _wu -> _c2, wv -> _c3
                     _wu[N - 1] = _wb[N-1];
-                    _wv[N - 1] = _wa[N-1] + _wc[N-1];
+                    _wv[N - 1] = One!(FuncType)*(_wa[N-1] + _wc[N-1]);
                     for(size_t i = N - 1; i > 0; --i)
                     {
                         _wu[i - 1] = _wa[i] * _wu[i] + _wb[i];
@@ -540,7 +549,7 @@ struct SplineCubic(EocVar, EocFunc,
                 else
                 {
                     // The index of the last point of spline
-                    size_t N = _x.length - 1;
+                    size_t N = pointsNum - 1;
                     // Some variables for optimization
                     VarType h0 = _x[1] - _x[0];
                     FuncType v0 = _f[1] - _f[0];
@@ -568,7 +577,7 @@ struct SplineCubic(EocVar, EocFunc,
                     // Build'n'sweep forward
 
                     // First step
-                    FuncType factor = 1/ a1;
+                    VarType factor = 1 / a1;
                     _wa[0] = -a2 * factor;
                     _wb[0] = b * factor;
 
@@ -677,7 +686,7 @@ struct SplineCubic(EocVar, EocFunc,
             return _bcLeftType;
         }
 
-        private FuncType _bcLeftVal = 0;
+        private FuncType _bcLeftVal = Zero!(FuncType);
 
         void bcLeftVal(FuncType val)
         {
@@ -705,7 +714,7 @@ struct SplineCubic(EocVar, EocFunc,
             return _bcRightType;
         }
 
-        private FuncType _bcRightVal = 0;
+        private FuncType _bcRightVal = Zero!(FuncType);
 
         void bcRightVal(FuncType val)
         {
@@ -739,11 +748,11 @@ struct SplineCubic(EocVar, EocFunc,
           *     calcNow = whether to calculate the spline immediately
           *               (true by default)
           */
-        this(FuncArray x, VarArray y, bool calcNow = true,
+        this(VarArray x, FuncArray y, bool calcNow = true,
              BoundCond bcLType = BoundCond.deriv2,
              BoundCond bcRType = BoundCond.deriv2,
-             FuncType bcLVal = 0,
-             FuncType bcRVal = 0)
+             FuncType bcLVal = Zero!(FuncType),
+             FuncType bcRVal = Zero!(FuncType))
         {
             this(x.length);
             setAll(x, y);
@@ -918,7 +927,7 @@ struct SplineAkima(EocVar, EocFunc,
                 /* TODO: After testing, refuse the workspaces by using
                  *       the coefficient arrays instead.
                  */
-                size_t N = _x.length - 1;
+                size_t N = pointsNum - 1;
                 FuncType[] d = new FuncType[N + 2];
                 FuncType[] w = new FuncType[N + 3];
                 // Calculate slopes and weights
@@ -1033,6 +1042,8 @@ private size_t binarySearch(A, X)(A a, X x)
     return ilo;
 }
 
+/* Returns array type based on given type.
+   If given type is already array-like does nothing */
 private template ProduceArray(ElementOrContainer)
 {
     static if(is(BaseElementType!ElementOrContainer == ElementOrContainer))
