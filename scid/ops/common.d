@@ -212,59 +212,100 @@ mixin template GeneralMatrixScalingAndAddition() {
 			( ElementType alpha, auto ref A a, auto ref B b, ElementType beta ) if( isGeneralMatrixStorage!A && isGeneralMatrixStorage!B ) {
 		import scid.blas;
 		
-		enum orderA = transposeStorageOrder!( storageOrderOf!A, transA );
-		enum orderB = transposeStorageOrder!( storageOrderOf!B, transB );
-		enum orderC = storageOrder;
+		// Are the matrices row major?
+		enum aRowMajor = storageOrderOf!A == StorageOrder.RowMajor;
+		enum bRowMajor = storageOrderOf!B == StorageOrder.RowMajor;
+		enum cRowMajor = storageOrder == StorageOrder.RowMajor;
 		
-		enum complexElems = isComplexScalar!ElementType;
+		// Should a and be read minor-first or major-first
+		enum aByMinor = transA ^ aRowMajor ^ cRowMajor;
+		enum bByMinor = transB ^ bRowMajor ^ cRowMajor;
 		
-		static if( orderC == StorageOrder.RowMajor ) {
-			pragma( msg, "Row-Major gemm is unsupoorted, fallback will be used" );
-			static assert( false );
-		}
+		// Do the matrices have complex elements?
+		enum complexElements = isComplexScalar!ElementType;
 		
-		static if( !complexElems ) {
-			enum chA = orderA == orderC ? 'N' : 'T';
-			enum chB = orderB == orderC ? 'N' : 'T';
-			enum doConj = false;
-		} else {
-			static if( orderA == orderC && transA && orderB == orderC && transB ) {
-				enum bool doConj = true;
-				enum chA = 'N';
-				enum chB = 'N';
-			} else static if( orderA == orderC && transA ) {
-				enum bool doConj = true;
-				enum chA = 'N';
-				enum chB = orderB == orderC ? 'N' : (transb ? 'T' : 'C');
-			} else static if( orderB == orderC && transB ) {
-				enum bool doConj = true;
-				enum chA = orderA == orderC ? 'N' : (transa ? 'T' : 'C');
-				enum chB = 'N';
+		static if( complexElements ) {
+			enum aConj = transA && !aByMinor, aHerm = transA && aByMinor;
+			enum bConj = transB && !bByMinor, bHerm = transB && bByMinor;
+			
+			static if( aByMinor )
+				enum aTransChar = bConj || !transA ? 'T' : 'C';
+			else
+				enum aTransChar = 'N';
+			
+			static if( bByMinor )
+				enum bTransChar = aConj || !transB ? 'T' : 'C';
+			else
+				enum bTransChar = 'N';
+			
+			enum conjugateResult = aConj && bHerm || bConj && aHerm || aConj && bConj;
+			
+			enum aTemp = aConj && !transB;
+			enum bTemp = bConj && !transA;
+			
+			static if( aTemp || bTemp )
+				auto alloc = newRegionAllocator();
+			
+			static if( aTemp ) {
+				auto aData    = cast(ElementType*)alloc.allocate( a.rows * a.columns );
+				auto aLeading = a.minor;
+				
+				blas.xgecopyc!'N'( a.minor, a.major, a.cdata, a.leading, aData, aLeading );
 			} else {
-				enum bool doConj = false;
-				enum chA = orderA == orderC ? 'N' : (transa ? 'C' : 'T');
-				enum chB = orderB == orderC ? 'N' : (transb ? 'C' : 'T');		
+				auto aData = a.cdata, aLeading = a.leading;
 			}
-		}
-		
-		static if( chA != 'N' )
-			size_t m = a.major, k = a.minor;
-		else
-			size_t m = a.minor, k = a.major;
-		
-		static if( chB != 'N' ) {
-			size_t n = b.minor;
-			assert( k == b.major );
+			
+			static if( bTemp ) {
+				auto bData    = cast(ElementType*)alloc.allocate( b.rows * b.columns );
+				auto bLeading = b.minor;
+				
+				blas.xgecopyc!'N'( b.minor, b.major, b.cdata, b.leading, bData, bLeading );
+			} else {
+				auto bData = b.cdata, bLeading = b.leading;
+			}
 		} else {
-			size_t n = b.major;
-			assert( k == b.minor );
+			enum conjugateResult = false;
+			auto aData = a.cdata, aLeading = a.leading;
+			auto bData = b.cdata, bLeading = b.leading;
+			
+			enum aTransChar = aByMinor ? 'T' : 'N';
+			enum bTransChar = bByMinor ? 'T' : 'N';
 		}
 		
-		resize( m, n, null );
+		static if( !cRowMajor ) {
+			static if( !aByMinor )
+				size_t m = a.minor, k = a.major;
+			else
+				size_t m = a.major, k = a.minor;
+			
+			static if( !bByMinor )
+				size_t n = b.major;
+			else
+				size_t n = b.minor;
+			
+			if( !beta )
+				this.resize( m, n, null );
+			
+			blas.gemm!( aTransChar, bTransChar )( m, n, k, alpha, aData, aLeading, bData, bLeading, beta, this.data, this.leading );
+		} else {
+			static if( !bByMinor )
+				size_t m = b.minor, k = b.major;
+			else
+				size_t m = b.major, k = b.minor;
+			
+			static if( !aByMinor )
+				size_t n = a.major;
+			else
+				size_t n = a.minor;
+			
+			if( !beta )
+				this.resize( m, n, null );
+			
+			blas.gemm!( bTransChar, aTransChar )( m, n, k, alpha, bData, bLeading, aData, aLeading, beta, this.data, this.leading );
+		}
 		
-		blas.gemm!( chA, chB )( m, n, k, alpha, a.cdata, a.leading, b.cdata, b.leading, beta, this.data, this.leading );
-		static if( doConj )
-			blas.xgecopyc( m, n, this.data, this.leading, this.data, this.leading );
+		static if( conjugateResult )
+			blas.xgecopyc!'N'(m,n,this.data,this.leading,this.data,this.leading);
 	}
 }
 

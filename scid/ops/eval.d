@@ -299,6 +299,23 @@ void evalMatrixProduct( Transpose transA = Transpose.no, Transpose transB = Tran
 	debug( EvalCalls )
 		writeln( "-- evalMatrixProduct( ", alpha, ", ", a.toString, ", ", b.toString, ", ", beta, ", ", dest.toString, ")" );
 
+	// Check inner dimensions
+	
+	string dimMismatchMessage( size_t m, size_t n, size_t p, size_t q) {
+		import std.string;
+		return format( "Dimensions do not match for product %dx%d and %dx%d.", m, n, p, q );
+	}
+	
+	static if( !transA && !transB )
+		assert( a.columns == b.rows, dimMismatchMessage( a.rows, a.columns, b.rows, b.columns ) );
+	else static if( !transA && transB )
+		assert( a.columns == b.columns, dimMismatchMessage( a.rows, a.columns, b.columns, b.rows ) );
+	else static if( transA && !transB )
+		assert( a.rows == b.rows, dimMismatchMessage( a.columns, a.rows, b.rows, b.columns ) );
+	else
+		assert( a.rows == b.columns, dimMismatchMessage( a.columns, a.rows, b.columns, b.rows ) );
+	
+	// Dispatch the operation to the storages if possible
 	static if( __traits( compiles, dest.storage.matrixProduct!( transA, transB )( alpha, a.storage, b.storage, beta ) ) ) {
 		dest.storage.matrixProduct!( transA, transB )( alpha, a.storage, b.storage, beta );
 	} else static if( __traits( compiles, a.storage.matrixProductA( alpha, b.storage, beta, dest ) ) ) {

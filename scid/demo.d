@@ -2,14 +2,22 @@ module scid.demo;
 
 version( demo ) {
 	import scid.matvec;
-	import std.stdio, std.conv;	
-	import std.typetuple;
-	import std.complex;
 	import scid.common.traits, scid.common.meta;
-	import scid.internal.regionallocator, scid.storages;
-	import std.range, std.exception;
+	import scid.internal.regionallocator;
+	
+	import std.stdio, std.conv, std.typetuple;
+	import std.complex, std.range, std.exception;
 	import std.string, std.math;
 	
+	void main() {
+		dMatProdTest();
+		zMatProdTest();
+		readln();
+	}
+	
+	// Methods demonstrating basic functionality.
+	
+	/** Syntax for basic expressions. */
 	void basicExpressions()() {
 		writeln();
 		writeln( "======================= Basic Expressions =======================" );
@@ -48,6 +56,7 @@ version( demo ) {
 		enforce( x == 0.0 );
 	}
 	
+	/** Using vectors and matrices and ranges. */
 	void rangeInterface()() {
 		writeln();
 		writeln( "======================== Range Interface ========================" );
@@ -90,6 +99,8 @@ version( demo ) {
 		writeln();
 	}
 	
+	
+	/** Directly accessing the data of vectors and matrices. */
 	void dataInterface()() {
 		writeln();
 		writeln( "========================= Data Interface =========================" );
@@ -116,171 +127,7 @@ version( demo ) {
 		enforce( otherMat.cdata != colMat.cdata );
 	}
 	
-	/** Some of these types have to be disabled otherwise the compiler runs out of memory. */
-	template MatrixTypes( T ) {
-		alias TypeTuple!(
-			Matrix!T,
-			//Matrix!(T,StorageOrder.RowMajor),
-			//TriangularMatrix!T,
-			//TriangularMatrix!(T, MatrixTriangle.Lower ),
-			//TriangularMatrix!(T, MatrixTriangle.Upper, StorageOrder.RowMajor),
-			//TriangularMatrix!(T, MatrixTriangle.Lower, StorageOrder.RowMajor),
-			//SymmetricMatrix!T,
-			// SymmetricMatrix!(T, MatrixTriangle.Lower ),
-			// SymmetricMatrix!(T, MatrixTriangle.Upper, StorageOrder.RowMajor),
-			// SymmetricMatrix!(T, MatrixTriangle.Lower, StorageOrder.RowMajor)
-		) MatrixTypes;
-	}
-	
-	/** Syntactically test all the operations on all the matrix types. */
-	void opTest()() {
-		alias TypeTuple!(double) ElementTypes;
-		foreach(T; ElementTypes) {
-			enum z = One!T;
-			T[][] minit = [[z, z, z], [z, z, z], [z, z, z]];
-			foreach(LhsType; MatrixTypes!T) {
-				auto lhs = LhsType( minit );
-				foreach(RhsType; MatrixTypes!T) {
-					auto rhs = RhsType( minit );
-					
-					eval(lhs + rhs*z);
-					eval(lhs*z - rhs);
-					eval(lhs * rhs*z);
-					eval(lhs.column(0)*z + rhs.column(1));
-					eval(lhs.row(0) - rhs.row(1)*z);
-					eval(lhs.row(0) * rhs.column(0)*z);
-					
-					eval( lhs.t*(lhs + rhs*z) );
-					eval( (lhs.column(0) - rhs.column(0)*z).t*lhs );
-					eval( (lhs.column(0)*z + rhs.column(0)).t*lhs.column(1) );
-					
-					lhs[] += rhs;
-					lhs[] -= rhs;
-					lhs[] *= rhs;
-					lhs[] *= z;
-					lhs[] /= z;
-					
-					lhs[0][] *= z;
-					lhs[0][] /= z;
-					lhs[0][] += lhs[][0].t;
-					lhs[][0] -= lhs[1][].t;
-					
-					lhs[] += z;
-					lhs[] -= z;
-					lhs[] = z;
-					lhs[] = (lhs + z)*(lhs - lhs[0][]*lhs[][0]);
-					
-					lhs[1..3][1..3] *= rhs[0..2][0..2];
-				}
-			}
-		}
-	}
-	
-	void testMat( M, E )( auto ref M m, size_t r, size_t c, E[] expected ) {
-		debug {
-			enum epsilon = 1e-3;
-			enforce( m.rows == r, format("Wrong no. of rows %d vs %d", m.rows, r) );
-			enforce( m.columns == c, format("Wrong no. of rows %d vs %d", m.columns, c ) );
-			auto a = m.cdata[ 0 .. expected.length ];
-			auto b = to!(BaseElementType!M[])(expected.dup);
-			b[] -= a[];
-			foreach( i, x ; b ) {
-				enforce( abs(x) <= epsilon,
-				   "Expected " ~ to!string(expected) ~ ", got "~ to!string(a) ~ " (" ~ to!string(i) ~ ", " ~ to!string(abs(x)) ~ ")"  );
-			}
-		}
-	}
-	
-	void testVec( V, E )( auto ref V v, E[] expected ) {
-		debug {
-			enforce( v.length == expected.length, format("Wrong vector length: %d vs. %d", v.length, expected.length) );
-			enforce( v.cdata[ 0 .. expected.length ] == to!(BaseElementType!V)(expected) );
-		}
-	}
-	
-	void dMatOpsTest()() {
-		alias Matrix!double            dGeMat;
-		alias SymmetricMatrix!double   dSyMat;
-		
-		auto a = dGeMat( 3, [1.,2,3,4,5,6,7,8,9] );
-		auto b = dGeMat( 3, [1.,2,3,4,5,6] );
-		
-		dGeMat c = b * a;
-		testMat( c, 2, 3, [22,28,49,64,76,100] );
-		c[] = c[0 .. 2][ 0 .. 2 ].t * ( (b[][0] - a[1..3][0]).t * eval(c[][0]) ) / 50.;
-		testMat( c, 2, 2, [-22,-49,-28,-64] );
-		
-		dSyMat s = c.t*c;
-		
-		testMat( s, 2, 2, [2885, 3752, 4880] );
-		
-		auto d = eval( s - dSyMat([2800.,3700,4800]) );
-		static assert( is( typeof(d) : dSyMat ) );
-		testMat( d, 2, 2, [85,52,80] );
-		enforce( d[1][0] == 52 );
-		
-		auto e = eval( d - b[0..2][1..3]*10 );
-		static assert( is( typeof(e) : dGeMat ) );
-		testMat( e, 2, 2, [ 55, 12, 2, 20 ] );
-	}
-	
-	void dMatInvTest()() {
-		auto x = Matrix!double([ [ 1, 2, 3 ], [  1, 1, 1 ], [ 2, -1, 1 ] ]);
-		auto y = Matrix!double([ [ 1, 2, 0 ], [ -2, 3, 4 ], [ 0,  2, 1 ] ]);
-		
-		// Thank you Octave...
-		testMat( eval(inv(x)*y), 3, 3,     [  -2.4,  -2.2,   2.6,   2.6,   1.8,  -1.4,   4.2,   3.6,  -3.8 ] );
-		testMat( eval(y*inv(x)), 3, 3,     [  -0.8,   2.6,   0.2,   3.0,  -3.0,   1.0,  -0.6,  -0.8,  -0.6 ] );
-		testMat( eval(inv(x.t)*y), 3, 3,   [   0.0,  -1.0,   1.0,  -0.2,   3.0,  -0.4,  -0.2,   3.0,  -1.4 ] );
-		testMat( eval(y*inv(x.t)), 3, 3,   [   1.6,   4.6,   2.2,   1.8,   1.8,   1.6,  -1.4,  -3.4,  -1.8 ] );
-		testMat( eval(inv(y)*x), 3, 3,     [  -9.0,   5.0,  -8.0,  20.0,  -9.0,  17.0,   9.0,  -3.0,   7.0 ] );
-		testMat( eval(x*inv(y)), 3, 3,     [  13.0,   7.0,  16.0,   6.0,   3.0,   7.0, -21.0, -11.0, -27.0 ] );
-		testMat( eval(inv(y.t)*x), 3, 3,   [  11.0,   5.0, -18.0,   4.0,   1.0,  -5.0,  17.0,   7.0, -27.0 ] );
-		testMat( eval(x*inv(y.t)), 3, 3,   [ -15.0,  -1.0,   0.0,   8.0,   1.0,   1.0, -13.0,  -1.0,  -1.0 ] );
-		
-		testMat( eval(x.t*inv(y.t)), 3, 3, [  -9.0,  20.0,   9.0,   5.0,  -9.0,  -3.0,  -8.0,  17.0,   7.0 ] );
-		testMat( eval(y.t*inv(x.t)), 3, 3, [  -2.4,   2.6,   4.2,  -2.2,   1.8,   3.6,   2.6,  -1.4,  -3.8 ] );
-	}
-	
-	void zMatOpsTest()() {
-		alias Matrix!cdouble            zGeMat;
-		alias SymmetricMatrix!cdouble   zSyMat;
-		
-		auto a = zGeMat( 3, [1.+4.i,2+3.i,3+2.i,4+1.i,5+0.i,6-1.i,7-2.i,8-3.i,9-4.i] );
-		auto b = zGeMat( 3, [1.+2.i,2.+1.i,3+0.i,4-1.i,5-2.i,6-3.i] );
-				   
-		zGeMat c = b * a;
-		testMat( c, 2, 3, [ 18 + 19.i, 33 + 22i, 45 - 8i, 60 - 23i, 72 -35i, 87 - 68i ] );
-		
-		
-		c[] = c[0 .. 2][ 0 .. 2 ].t * ( (b[][0] - a[1..3][0]).t * eval(c[][0]) ) / (10.+0.i);
-		testMat( c, 2, 2, [-146.60 + 192.80i, -422.00 -  28.60i, -281.60 + 235.40i, -575.00 - 151.60i] );
-		
-		c[] = c + zGeMat([[150-190i,280-230i], [430+28i,570+150i]]);
-		zSyMat s = c.t*c;
-		
-		testMat( s, 2, 2, [ 83.760 +  0.000i,  
-		                   -29.360 +  7.040i,
-		                    59.280 +  0.000i ]);
-		
-		
-		enforce( abs(s[1][0] - (-29.360 - 7.040i)) <= 1e-3 );
-		
-		auto d = eval( s - zSyMat([80.+0.i,-28,59]) );
-		static assert( is( typeof(d) : zSyMat ) );
-		
-		testMat( d, 2, 2, [ 3.76 + 0.0i, -1.36 + 7.04i, 0.28 + 0.0i ] );
-		
-		
-		enforce( abs(d[1][0] - (-1.36 - 7.04i)) <= 1e-3 );
-		
-		
-		auto e = eval( d + b[0..2][1..3]*(10.+0.i) );
-		static assert( is( typeof(e) : zGeMat ) );
-		
-		testMat( e, 2, 2, [ 33.760 +  0.000i, 38.640 - 17.040i, 48.640 - 12.960i, 60.280 - 30.000i] );
-	}
-	
+	/** Creating views of existing data that allow it to be treated as a matrix or vector. */
 	void externalViews()() {
 		auto alloc = newRegionAllocator();
 		double array[] = [1.,4,4,5];
@@ -343,6 +190,81 @@ version( demo ) {
 		enforce( array[ 0 .. 2 ] == [ 10., 22. ] );
 	}
 	
+	// ====================================================== TESTING ===========================================
+	// These should be moved into unittests at some point, for now OPTLINK makes it more comfortable to have them
+	// this way...
+	
+	/** myApproxEqual that works on complex elements as well */
+	bool myApproxEqual( T, U )( T a, U b ) {
+		static if( is( T : cdouble ) && is( U : cdouble ) )
+			return myApproxEqual( a.re, b.re ) && myApproxEqual( a.im, b.im );
+		else
+			return approxEqual( a, b );
+	}
+	
+	/** Enforce the data & dimensions of a matrix. */
+	void enforceMatData( M, E )( auto ref M m, size_t r, size_t c, E[] expected ) {
+		debug {
+			enum epsilon = 1e-3;
+			enforce( m.rows == r, format("Wrong no. of rows %d vs %d", m.rows, r) );
+			enforce( m.columns == c, format("Wrong no. of rows %d vs %d", m.columns, c ) );
+			auto a = m.cdata[ 0 .. expected.length ];
+			auto b = to!(BaseElementType!M[])(expected);
+			foreach( i ; 0 .. a.length ) {
+				enforce( myApproxEqual( a[i], b[i] ),
+				   "Expected " ~ to!string(expected) ~ ", got "~ to!string(a) ~
+					" (" ~ to!string(i) ~ ", " ~ to!string(abs(x)) ~ ")"
+				);
+			}
+		}
+	}
+	
+	/** Enforce the data and length of a vector. */
+	void enforceVecData( V, E )( auto ref V v, E[] expected ) {
+		debug {
+			enforce( v.length == expected.length, format("Wrong vector length: %d vs. %d", v.length, expected.length) );
+			enforce( v.cdata[ 0 .. expected.length ] == to!(BaseElementType!V)(expected) );
+		}
+	}
+	
+	/** Enforce that a matrix is myApproxEqual to a built-in matrix. */
+	void enforceMatApproxEqual( int line = __LINE__, A, E )( auto ref A a, E[][] b ) {
+		string message() { return "At " ~ to!string(line) ~ ": Expected " ~ to!string(b) ~ ", got " ~ a.toString() ~ ". "; }
+			
+		enforce( a.rows == b.length, message() ~ "First dimensions do not match." );
+			
+		if( a.rows == 0 )
+			return;
+			
+		enforce( a.columns == b[0].length, message() ~ "Second dimensions do not match." );
+			
+		foreach( i ; 0 .. a.rows ) {
+			foreach( j ; 0 .. a.columns ) {
+				enforce( myApproxEqual( a[ i, j ], b[ i ][ j ] ), message() ~
+					format("Elements at position (%d,%d) do not match.", i, j)
+				);
+			}
+		}
+	}
+	
+	// Some of these types have to be disabled otherwise the compiler runs out of memory.
+	/** A TypeTuple of all matrix types to be tested by generic tests. */
+	template MatrixTypes( T ) {
+		alias TypeTuple!(
+			Matrix!T,
+			//Matrix!(T,StorageOrder.RowMajor),
+			//TriangularMatrix!T,
+			//TriangularMatrix!(T, MatrixTriangle.Lower ),
+			//TriangularMatrix!(T, MatrixTriangle.Upper, StorageOrder.RowMajor),
+			//TriangularMatrix!(T, MatrixTriangle.Lower, StorageOrder.RowMajor),
+			//SymmetricMatrix!T,
+			// SymmetricMatrix!(T, MatrixTriangle.Lower ),
+			// SymmetricMatrix!(T, MatrixTriangle.Upper, StorageOrder.RowMajor),
+			// SymmetricMatrix!(T, MatrixTriangle.Lower, StorageOrder.RowMajor)
+		) MatrixTypes;
+	}
+	
+	/** Check that empty matrices and vectors don't cause crashes. */
 	void emptyMatVecTest()() {
 		Matrix!double m1,m2;
 		Vector!double v1,v2;
@@ -366,8 +288,259 @@ version( demo ) {
 		enforce( ( eval( inv( m1 ) * m2 ) ).empty );
 	}
 	
+	/** Syntactically test all the operations on all the matrix types. */
+	void syntaxTest()() {
+		alias TypeTuple!(double) ElementTypes;
+		foreach(T; ElementTypes) {
+			enum z = One!T;
+			T[][] minit = [[z, z, z], [z, z, z], [z, z, z]];
+			foreach(LhsType; MatrixTypes!T) {
+				auto lhs = LhsType( minit );
+				foreach(RhsType; MatrixTypes!T) {
+					auto rhs = RhsType( minit );
+					
+					eval(lhs + rhs*z);
+					eval(lhs*z - rhs);
+					eval(lhs * rhs*z);
+					eval(lhs.column(0)*z + rhs.column(1));
+					eval(lhs.row(0) - rhs.row(1)*z);
+					eval(lhs.row(0) * rhs.column(0)*z);
+					
+					eval( lhs.t*(lhs + rhs*z) );
+					eval( (lhs.column(0) - rhs.column(0)*z).t*lhs );
+					eval( (lhs.column(0)*z + rhs.column(0)).t*lhs.column(1) );
+					
+					lhs[] += rhs;
+					lhs[] -= rhs;
+					lhs[] *= rhs;
+					lhs[] *= z;
+					lhs[] /= z;
+					
+					lhs[0][] *= z;
+					lhs[0][] /= z;
+					lhs[0][] += lhs[][0].t;
+					lhs[][0] -= lhs[1][].t;
+					
+					lhs[] += z;
+					lhs[] -= z;
+					lhs[] = z;
+					lhs[] = (lhs + z)*(lhs - lhs[0][]*lhs[][0]);
+					
+					lhs[1..3][1..3] *= rhs[0..2][0..2];
+				}
+			}
+		}
+	}
+	
+	/** Test a medley of matrix operations with double elements. */
+	void dMatOpsTest()() {
+		alias Matrix!double            dGeMat;
+		alias SymmetricMatrix!double   dSyMat;
+		
+		auto a = dGeMat( 3, [1.,2,3,4,5,6,7,8,9] );
+		auto b = dGeMat( 3, [1.,2,3,4,5,6] );
+		
+		dGeMat c = b * a;
+		enforceMatData( c, 2, 3, [22,28,49,64,76,100] );
+		c[] = c[0 .. 2][ 0 .. 2 ].t * ( (b[][0] - a[1..3][0]).t * eval(c[][0]) ) / 50.;
+		enforceMatData( c, 2, 2, [-22,-49,-28,-64] );
+		
+		dSyMat s = c.t*c;
+		
+		enforceMatData( s, 2, 2, [2885, 3752, 4880] );
+		
+		auto d = eval( s - dSyMat([2800.,3700,4800]) );
+		static assert( is( typeof(d) : dSyMat ) );
+		enforceMatData( d, 2, 2, [85,52,80] );
+		enforce( d[1][0] == 52 );
+		
+		auto e = eval( d - b[0..2][1..3]*10 );
+		static assert( is( typeof(e) : dGeMat ) );
+		enforceMatData( e, 2, 2, [ 55, 12, 2, 20 ] );
+	}
+	
+	/** Test inversions on matrices of doubles. */
+	void dMatInvTest()() {
+		auto x = Matrix!double([ [ 1, 2, 3 ], [  1, 1, 1 ], [ 2, -1, 1 ] ]);
+		auto y = Matrix!double([ [ 1, 2, 0 ], [ -2, 3, 4 ], [ 0,  2, 1 ] ]);
+		
+		// Thank you Octave...
+		enforceMatData( eval(inv(x)*y), 3, 3,     [  -2.4,  -2.2,   2.6,   2.6,   1.8,  -1.4,   4.2,   3.6,  -3.8 ] );
+		enforceMatData( eval(y*inv(x)), 3, 3,     [  -0.8,   2.6,   0.2,   3.0,  -3.0,   1.0,  -0.6,  -0.8,  -0.6 ] );
+		enforceMatData( eval(inv(x.t)*y), 3, 3,   [   0.0,  -1.0,   1.0,  -0.2,   3.0,  -0.4,  -0.2,   3.0,  -1.4 ] );
+		enforceMatData( eval(y*inv(x.t)), 3, 3,   [   1.6,   4.6,   2.2,   1.8,   1.8,   1.6,  -1.4,  -3.4,  -1.8 ] );
+		enforceMatData( eval(inv(y)*x), 3, 3,     [  -9.0,   5.0,  -8.0,  20.0,  -9.0,  17.0,   9.0,  -3.0,   7.0 ] );
+		enforceMatData( eval(x*inv(y)), 3, 3,     [  13.0,   7.0,  16.0,   6.0,   3.0,   7.0, -21.0, -11.0, -27.0 ] );
+		enforceMatData( eval(inv(y.t)*x), 3, 3,   [  11.0,   5.0, -18.0,   4.0,   1.0,  -5.0,  17.0,   7.0, -27.0 ] );
+		enforceMatData( eval(x*inv(y.t)), 3, 3,   [ -15.0,  -1.0,   0.0,   8.0,   1.0,   1.0, -13.0,  -1.0,  -1.0 ] );
+		
+		enforceMatData( eval(x.t*inv(y.t)), 3, 3, [  -9.0,  20.0,   9.0,   5.0,  -9.0,  -3.0,  -8.0,  17.0,   7.0 ] );
+		enforceMatData( eval(y.t*inv(x.t)), 3, 3, [  -2.4,   2.6,   4.2,  -2.2,   1.8,   3.6,   2.6,  -1.4,  -3.8 ] );
+	}
+	
+	/** Specifically test all cases of matrix products for doubles (32 cases...). */
+	void dMatProdTest()() {
+		auto aInit    = [ [ 1.,  2, 1 ], [ 3., -1, 2]  ];
+		auto bInit    = [ [ 1., -2 ],    [ -3., 2 ], [ -2., 1. ] ];
+		auto correct1 = [ [-7., 3], [2., -6] ];
+		auto correct2 = [ [-5.,3,1],[4.,-8,-5],[-3.,1,0] ];	
+		
+		alias Matrix!double                            ColMat;
+		alias Matrix!( double, StorageOrder.RowMajor ) RowMat;
+		
+		// check all cases except mixed transpose (dimensions wouldn't match)
+		auto colA = ColMat( aInit ), colB = ColMat( bInit );
+		auto rowA = RowMat( aInit ), rowB = RowMat( bInit );
+		ColMat colC;
+		RowMat rowC;
+		
+		colC[] = colA * colB;     enforceMatApproxEqual( colC, correct1 );
+		colC[] = colA * rowB;     enforceMatApproxEqual( colC, correct1 );
+		colC[] = rowA * colB;     enforceMatApproxEqual( colC, correct1 );
+		colC[] = rowA * rowB;     enforceMatApproxEqual( colC, correct1 );
+		
+		colC[] = colA.t * colB.t; enforceMatApproxEqual( colC, correct2 );
+		colC[] = colA.t * rowB.t; enforceMatApproxEqual( colC, correct2 );
+		colC[] = rowA.t * colB.t; enforceMatApproxEqual( colC, correct2 );
+		colC[] = rowA.t * rowB.t; enforceMatApproxEqual( colC, correct2 );
+		
+		rowC[] = colA * colB;     enforceMatApproxEqual( rowC, correct1 );
+		rowC[] = colA * rowB;     enforceMatApproxEqual( rowC, correct1 );
+		rowC[] = rowA * colB;     enforceMatApproxEqual( rowC, correct1 );
+		rowC[] = rowA * rowB;     enforceMatApproxEqual( rowC, correct1 );
+		
+		rowC[] = colA.t * colB.t; enforceMatApproxEqual( rowC, correct2 );
+		rowC[] = colA.t * rowB.t; enforceMatApproxEqual( rowC, correct2 );
+		rowC[] = rowA.t * colB.t; enforceMatApproxEqual( rowC, correct2 );
+		rowC[] = rowA.t * rowB.t; enforceMatApproxEqual( rowC, correct2 );
+		
+		// check mixed transpose
+		auto correct3 = [[-8.,4],[5.,-6]];
+		auto correct4 = [[-3.,1],[5.,-11]];
+		colA[] = colA[0..2][0..2]; colB[] = colB[0..2][0..2];
+		rowA[] = rowA[0..2][0..2]; rowB[] = rowB[0..2][0..2];
+		
+		colC[] = colA.t * colB; enforceMatApproxEqual( colC, correct3 );
+		colC[] = colA.t * rowB; enforceMatApproxEqual( colC, correct3 );
+		colC[] = rowA.t * colB; enforceMatApproxEqual( colC, correct3 );
+		colC[] = rowA.t * rowB; enforceMatApproxEqual( colC, correct3 );
+		
+		colC[] = colA * colB.t; enforceMatApproxEqual( colC, correct4 );
+		colC[] = colA * rowB.t; enforceMatApproxEqual( colC, correct4 );
+		colC[] = rowA * colB.t; enforceMatApproxEqual( colC, correct4 );
+		colC[] = rowA * rowB.t; enforceMatApproxEqual( colC, correct4 );
+		
+		rowC[] = colA.t * colB; enforceMatApproxEqual( rowC, correct3 );
+		rowC[] = colA.t * rowB; enforceMatApproxEqual( rowC, correct3 );
+		rowC[] = rowA.t * colB; enforceMatApproxEqual( rowC, correct3 );
+		rowC[] = rowA.t * rowB; enforceMatApproxEqual( rowC, correct3 );
+		
+		rowC[] = colA * colB.t; enforceMatApproxEqual( rowC, correct4 );
+		rowC[] = colA * rowB.t; enforceMatApproxEqual( rowC, correct4 );
+		rowC[] = rowA * colB.t; enforceMatApproxEqual( rowC, correct4 );
+		rowC[] = rowA * rowB.t; enforceMatApproxEqual( rowC, correct4 );
+	}
+	
+	void zMatProdTest()() {
+		alias Matrix!cdouble                            ColMat;
+		alias Matrix!( cdouble, StorageOrder.RowMajor ) RowMat;
+		
+		auto aInit    = [ [  1. + 1.i,  2. - 1.i ], [ -1. + 2.i,  1. + 1.i ] ];
+		auto bInit    = [ [ -1. - 1.i,  2. - 2.i ], [  2. + 1.i,  0. - 1.i ] ];
+		auto correct1 = [ [  5. - 2.i,  3. - 2.i ], [  4. + 2.i,  3. + 5.i ] ];
+		auto correct2 = [ [  2. - 4.i,  3. - 4.i ], [  1. + 1.i,  6. + 1.i ] ];
+		auto correct3 = [ [ -2. - 5.i, -2. - 3.i ], [  2. - 4.i,  5. - 3.i ] ];
+		auto correct4 = [ [  4. + 2.i,  4. + 3.i ], [ -1. + 1.i, -1. + 6.i ] ];
+		
+		auto colA = ColMat( aInit ), colB = ColMat( bInit );
+		auto rowA = RowMat( aInit ), rowB = RowMat( bInit );
+		ColMat colC;
+		RowMat rowC;
+		
+		// check all cases
+		colC[] = colA * colB;     enforceMatApproxEqual( colC, correct1 );
+		colC[] = colA * rowB;     enforceMatApproxEqual( colC, correct1 );
+		colC[] = rowA * colB;     enforceMatApproxEqual( colC, correct1 );
+		colC[] = rowA * rowB;     enforceMatApproxEqual( colC, correct1 );
+		
+		colC[] = colA.t * colB.t; enforceMatApproxEqual( colC, correct2 );
+		colC[] = colA.t * rowB.t; enforceMatApproxEqual( colC, correct2 );
+		colC[] = rowA.t * colB.t; enforceMatApproxEqual( colC, correct2 );
+		colC[] = rowA.t * rowB.t; enforceMatApproxEqual( colC, correct2 );
+		
+		rowC[] = colA * colB;     enforceMatApproxEqual( rowC, correct1 );
+		rowC[] = colA * rowB;     enforceMatApproxEqual( rowC, correct1 );
+		rowC[] = rowA * colB;     enforceMatApproxEqual( rowC, correct1 );
+		rowC[] = rowA * rowB;     enforceMatApproxEqual( rowC, correct1 );
+		
+		rowC[] = colA.t * colB.t; enforceMatApproxEqual( rowC, correct2 );
+		rowC[] = colA.t * rowB.t; enforceMatApproxEqual( rowC, correct2 );
+		rowC[] = rowA.t * colB.t; enforceMatApproxEqual( rowC, correct2 );
+		rowC[] = rowA.t * rowB.t; enforceMatApproxEqual( rowC, correct2 );
+		
+		colC[] = colA.t * colB;   enforceMatApproxEqual( colC, correct3 );
+		colC[] = colA.t * rowB;   enforceMatApproxEqual( colC, correct3 );
+		colC[] = rowA.t * colB;   enforceMatApproxEqual( colC, correct3 );
+		colC[] = rowA.t * rowB;   enforceMatApproxEqual( colC, correct3 );
+								  
+		colC[] = colA * colB.t;   enforceMatApproxEqual( colC, correct4 );
+		colC[] = colA * rowB.t;   enforceMatApproxEqual( colC, correct4 );
+		colC[] = rowA * colB.t;   enforceMatApproxEqual( colC, correct4 );
+		colC[] = rowA * rowB.t;   enforceMatApproxEqual( colC, correct4 );
+								  
+		rowC[] = colA.t * colB;   enforceMatApproxEqual( rowC, correct3 );
+		rowC[] = colA.t * rowB;   enforceMatApproxEqual( rowC, correct3 );
+		rowC[] = rowA.t * colB;   enforceMatApproxEqual( rowC, correct3 );
+		rowC[] = rowA.t * rowB;   enforceMatApproxEqual( rowC, correct3 );
+								  
+		rowC[] = colA * colB.t;   enforceMatApproxEqual( rowC, correct4 );
+		rowC[] = colA * rowB.t;   enforceMatApproxEqual( rowC, correct4 );
+		rowC[] = rowA * colB.t;   enforceMatApproxEqual( rowC, correct4 );
+		rowC[] = rowA * rowB.t;   enforceMatApproxEqual( rowC, correct4 );
+	}
+	
+	/** Test a medley of operations on complex-valued matrices. */
+	void zMatOpsTest()() {
+		alias Matrix!cdouble            zGeMat;
+		alias SymmetricMatrix!cdouble   zSyMat;
+		
+		auto a = zGeMat( 3, [1.+4.i,2+3.i,3+2.i,4+1.i,5+0.i,6-1.i,7-2.i,8-3.i,9-4.i] );
+		auto b = zGeMat( 3, [1.+2.i,2.+1.i,3+0.i,4-1.i,5-2.i,6-3.i] );
+				   
+		zGeMat c = b * a;
+		enforceMatData( c, 2, 3, [ 18 + 19.i, 33 + 22i, 45 - 8i, 60 - 23i, 72 -35i, 87 - 68i ] );
+		
+		
+		c[] = c[0 .. 2][ 0 .. 2 ].t * ( (b[][0] - a[1..3][0]).t * eval(c[][0]) ) / (10.+0.i);
+		enforceMatData( c, 2, 2, [-146.60 + 192.80i, -422.00 -  28.60i, -281.60 + 235.40i, -575.00 - 151.60i] );
+		
+		c[] = c + zGeMat([[150-190i,280-230i], [430+28i,570+150i]]);
+		zSyMat s = c.t*c;
+		
+		enforceMatData( s, 2, 2, [ 83.760 +  0.000i,  
+		                   -29.360 +  7.040i,
+		                    59.280 +  0.000i ]);
+		
+		
+		enforce( abs(s[1][0] - (-29.360 - 7.040i)) <= 1e-3 );
+		
+		auto d = eval( s - zSyMat([80.+0.i,-28,59]) );
+		static assert( is( typeof(d) : zSyMat ) );
+		
+		enforceMatData( d, 2, 2, [ 3.76 + 0.0i, -1.36 + 7.04i, 0.28 + 0.0i ] );
+		
+		
+		enforce( abs(d[1][0] - (-1.36 - 7.04i)) <= 1e-3 );
+		
+		
+		auto e = eval( d + b[0..2][1..3]*(10.+0.i) );
+		static assert( is( typeof(e) : zGeMat ) );
+		
+		enforceMatData( e, 2, 2, [ 33.760 +  0.000i, 38.640 - 17.040i, 48.640 - 12.960i, 60.280 - 30.000i] );
+	}
+	
+	/** Issue 52 - Inverting Scalars */
 	void testIssue52()() {
-		// Issue 52 - Inverting Scalars
 		// Scalar literals
 		float   f = 2.0f, invf = inv( f );
 		double  d = 4.0,  invd = inv( d );
@@ -381,24 +554,24 @@ version( demo ) {
 		enforce( invdot == 0.05 );
 	}
 	
+	/** Issue 50 - Matrix slice-slice-assign ends up transposed	*/
 	void testIssue50()() {
-		// Issue 50 - Matrix slice-slice-assign ends up transposed	
 		auto a = Matrix!double([[1.0, 2], [4.0, 5]]);
 		auto b = Matrix!double(3, 3);
 		b[0..2][0..2] = a;
 		enforce( b[0,0] == 1. && b[0,1] == 2. && b[1,0] == 4. && b[1,1] == 5. );
 	}
 	
+	/** Issue 49 - Wrong index-slice-assign */
 	void testIssue49()() {
-		// Issue 49 - Wrong index-slice-assign
 		auto mat = Matrix!double([[1,2,3],[4,5,6],[7,8,9]]);
 		auto vec = Vector!double([100, 200]).t;
 		mat[2][0..2] = vec;
-		testMat( mat, 3, 3, [1.,4,100,2,5,200,3,6,9] );
+		enforceMatData( mat, 3, 3, [1.,4,100,2,5,200,3,6,9] );
 	}
 	
+	/** Issue 35 - Assignment should return value for chaining */
 	void testIssue35()() {
-		// Issue 35 - Assignment should return value for chaining
 		auto mat = Matrix!double(5, 5);
 		auto vec = Vector!double([1.,2,3,4]);
 		mat[2, 2] = mat[3, 3] = 5;
@@ -412,29 +585,43 @@ version( demo ) {
 		enforce( vec[2] == 9.0 && vec[ 3 ] == 9.0 );
 	}
 	
+	/** Issue 32 - D'tor problems/assert failures, Linux Only */
 	void testIssue32()() {
-		// Issue 32 - 
 		auto xTx = Matrix!double(1, 1);
 		auto xTy = Matrix!double(1, 2);
 		xTx[0, 0] = 31;
 
-		xTy[0, 0] = 41;
+		xTy[0, 0] = 41;	
 		xTy[0, 1] = 59;
 
 		auto ret = eval(inv(xTx) * xTy);
 	}
 	
+	/** Issue 48 - Vector should be a random-access range */
 	void testIssue48()() {
-		// Issue 48 - Vector should be a random-access range	
 		import std.range;
-		
 		static assert(isInputRange!(Vector!double));         
 		static assert(isForwardRange!(Vector!double));       
 		static assert(isBidirectionalRange!(Vector!double)); 
 		static assert(isRandomAccessRange!(Vector!double)); 
 	}
 	
-	void main() {
-		testIssue35();
+	/** Isuue 54 - Matrix slices have copy semantics, while row/column slices have view semantics */
+	void testIssue54()() {
+		auto mat   = Matrix!double([ [1.,2.], [3., 4.] ]);	
+		auto row   = mat[ 0 ][ 0 .. 2 ];
+		auto col   = mat[ 0 .. 2 ][ 0 ];
+		auto slice = mat[ 0 .. 1 ][ 0 .. 1 ];
+		
+		// Copy semantics of matrix slices:
+		slice[ 0, 0 ] = 10.0;
+		enforce( mat[ 0, 0 ] = 1. );
+		
+		// View semantics of row and column slices:
+		row[ 0 ] = 100.;
+		enforce( mat[ 0, 0 ] == 1. && col[ 0 ] == 1. );
+		
+		col[ 0 ] = 200.;
+		enforce( mat[ 0, 0 ] == 1. && row[ 0 ] == 100. );
 	}
 }

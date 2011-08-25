@@ -72,9 +72,7 @@ mixin template MatrixChecks() {
 	/** Check that a built-in array of arrays is a valid general matrix. */
 	static void checkGeneralInitializer_( E )( E[][] mat ) {
 		debug {
-			import std.array;
-			
-			if( mat.empty )
+			if( !mat.length )
 				return;
 			
 			size_t cols = mat[ 0 ].length;

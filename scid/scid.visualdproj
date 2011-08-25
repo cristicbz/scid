@@ -9,9 +9,9 @@
   <oneobj>0</oneobj>
   <trace>0</trace>
   <quiet>0</quiet>
-  <verbose>0</verbose>
+  <verbose>1</verbose>
   <vtls>0</vtls>
-  <symdebug>2</symdebug>
+  <symdebug>0</symdebug>
   <optimize>0</optimize>
   <cpu>0</cpu>
   <isX86_64>0</isX86_64>
@@ -70,7 +70,7 @@
   <moduleDepsFile />
   <run>0</run>
   <runargs />
-  <runCv2pdb>1</runCv2pdb>
+  <runCv2pdb>0</runCv2pdb>
   <pathCv2pdb>$(VisualDInstallDir)cv2pdb\cv2pdb.exe</pathCv2pdb>
   <objfiles />
   <linkswitches />
@@ -149,7 +149,7 @@
   <doXGeneration>1</doXGeneration>
   <xfilename>$(IntDir)\$(TargetName).json</xfilename>
   <debuglevel>0</debuglevel>
-  <debugids>blasCalls lapackCalls fallbackCalls</debugids>
+  <debugids>fallbackCalls</debugids>
   <versionlevel>0</versionlevel>
   <versionids>demo</versionids>
   <dump_source>0</dump_source>
