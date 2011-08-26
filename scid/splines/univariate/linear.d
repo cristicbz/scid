@@ -113,3 +113,14 @@ struct SplineLinear(EocVar, EocFunc,
         }
     }
 } // TODO: unittest
+
+unittest
+{
+    double[] x = [1, 2, 3];
+    double[] y = [-1, 1, -1];
+    auto spl = SplineLinear!(double, double)(x, y);
+    assert(spl._calcFunction(1.5, 0) == 0);
+    assert(spl._calcDeriv(1.5, 0) == 2);
+    assert(spl._calcFunction(2.75, 1) == -0.5);
+    assert(spl._calcDeriv(2.75, 1) == -2);
+}

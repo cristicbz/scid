@@ -1,7 +1,6 @@
 module scid.splines.univariate.cubic;
 
 import scid.common.meta;
-import scid.splines.base;
 import scid.splines.univariate.base;
 
 /** Cubic one-dimensional spline (order = 3, defect = 1).
@@ -104,6 +103,7 @@ struct SplineCubic(EocVar, EocFunc,
 
                     // Boundary conditions on the left side (the first equation)
                     // TODO: optimize
+                    // FIXME: check
                     VarType hf = _x[pointsNum-1] - _x[pointsNum-2];
                     a0 = 1 / hf;
                     a2 = 1 / h0;
@@ -125,10 +125,10 @@ struct SplineCubic(EocVar, EocFunc,
                         FuncType v1 = _f[i+1] - _f[i];
                         FuncType d1 = v1 / h1;
                         // Calculate eqaution coefficients
-                        a0 = h0 / (h0 + h1);
+                        a0 = h1 / (h0 + h1);
                         a1 = 2;
                         a2 = 1 - a0;
-                        b = 3 * (a0 * d1 + a2 * d0);
+                        b = 3 * (a0 * d0 + a2 * d1);
                         // Forward sweep step
                         VarType factor = 1 / (a1 + a0 * _wa[i - 1]);
                         _wa[i] = -a2 * factor;
@@ -193,13 +193,13 @@ struct SplineCubic(EocVar, EocFunc,
 
                     // Boundary conditions on the left side (the first equation)
                     if(_bcLeftType == BoundCond.deriv1)
-                    {
+                    {// FIXME: check
                         a1 = 1;
                         a2 = 0;
                         b = _bcLeftVal;
                     }
                     else if(_bcLeftType == BoundCond.deriv2)
-                    {
+                    {// FIXME: check
                         a1 = 2;
                         a2 = 1;
                         b = 3 * d0 - h0 * _bcLeftVal / 2;
@@ -220,10 +220,10 @@ struct SplineCubic(EocVar, EocFunc,
                         FuncType v1 = _f[i+1] - _f[i];
                         FuncType d1 = v1 / h1;
                         // Calculate eqaution coefficients
-                        a0 = h0 / (h0 + h1);
+                        a0 = h1 / (h0 + h1);
                         a1 = 2;
                         a2 = 1 - a0;
-                        b = 3 * (a0 * d1 + a2 * d0);
+                        b = 3 * (a0 * d0 + a2 * d1);
                         // Forward sweep step
                         factor = 1 / (a1 + a0 * _wa[i - 1]);
                         _wa[i] = -a2 * factor;
@@ -235,14 +235,14 @@ struct SplineCubic(EocVar, EocFunc,
                     }
 
                     // Boundary conditions on the right side (the last equation)
-                    if(_bcLeftType == BoundCond.deriv1)
-                    {
+                    if(_bcRightType == BoundCond.deriv1)
+                    {// FIXME: check
                         a0 = 0;
                         a1 = 1;
                         b = _bcRightVal;
                     }
-                    else if(_bcLeftType == BoundCond.deriv2)
-                    {
+                    else if(_bcRightType == BoundCond.deriv2)
+                    {// FIXME: check
                         a0 = 1;
                         a1 = 2;
                         b = 3 * d0 - h0 * _bcRightVal / 2;
@@ -391,8 +391,25 @@ struct SplineCubic(EocVar, EocFunc,
             /* For the following case: this(x, y, calcNow, periodic) */
             if(bcLType == BoundCond.periodic)
                 bcRType = BoundCond.periodic;
+            _bcLeftType = bcLType;
+            _bcRightType = bcRType;
+            _bcLeftVal = bcLVal;
+            _bcRightVal = bcRVal;
             if(calcNow)
                 calculate();
         }
     }
-} // TODO: unittest
+}
+
+unittest
+{
+    alias SplineCubic!(double, double, SplineOptim.normal) MySpline;
+    double[] x = [0, 1, 3];
+    double[] y = [0, 1, 27];
+    auto spl = MySpline(x, y, true,
+                        MySpline.BoundCond.deriv1,
+                        MySpline.BoundCond.deriv1,
+                        0, 27);
+    assert(spl._calcFunction(2, 1) == 8);
+    assert(spl._calcDeriv(2, 1) == 12);
+}

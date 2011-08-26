@@ -1,27 +1,23 @@
-module scid.splines.base;
+/** This module is for scid.splines internal use only.
+  */
+module scid.splines.support;
 
 public import scid.common.traits;
 
-/// The type of optimization
-enum SplineOptim
-{
-    normal, /// No special features.
-    fixVar /** Preliminary calculations depending only on VVA are made if it
-             * changes. Minimal amount of operations is performed when FVA
-             * changes.
-             */
-}
-
 /* Returns array type based on given type.
    If given type is already array-like does nothing */
-/* NOTE: visibility levels do not work for templates!
- */
-package template ProduceArray(ElementOrContainer)
+template ProduceArray(ElementOrContainer)
 {
     static if(is(BaseElementType!ElementOrContainer == ElementOrContainer))
         alias ElementOrContainer[] ProduceArray;
     else
         alias ElementOrContainer ProduceArray;
+}
+
+unittest
+{
+    static assert(is(ProduceArray!double == double[]));
+    static assert(is(ProduceArray!(double[]) == double[]));
 }
 
 /* Common binary search in a sorted array.
@@ -48,4 +44,14 @@ size_t binarySearch(A, X)(A a, X x)
         // if x is equal to the last element return the last interval
         --ilo;
     return ilo;
+}
+
+unittest
+{
+    double[] a = [0, 1, 2, 3];
+    assert(binarySearch(a, 0) == 0);
+    assert(binarySearch(a, 0.5) == 0);
+    assert(binarySearch(a, 1.5) == 1);
+    assert(binarySearch(a, 2.5) == 2);
+    assert(binarySearch(a, 3) == 2);
 }

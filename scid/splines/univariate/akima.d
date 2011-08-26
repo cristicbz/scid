@@ -29,7 +29,9 @@ struct SplineAkima(EocVar, EocFunc,
 {
     // TODO: Add different boundary conditions
     // TODO: Add a mechanism for adding points to the curve
-    // TODO: Implement support of compound types
+    // FIXME: Implement support of compound types
+    static assert(Props.length == 0,
+                  "Compound types support is not implemented yet");
 
     mixin splineBase!(EocVar, EocFunc);
 
@@ -141,7 +143,7 @@ struct SplineAkima(EocVar, EocFunc,
         static if(optim == SplineOptim.fixVar)
         {
             // TODO: implement this area when the algorithm will be tested
-            static assert(false, "No implementation for fixVar mode");
+            static assert(false, "fixVar mode is not implemented yet");
 
             bool _needUpdateVar;
 
