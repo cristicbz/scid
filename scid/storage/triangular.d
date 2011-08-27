@@ -99,18 +99,20 @@ struct TriangularArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder 
 		size_  = other.size_;
 	}
 	
-	void resize( A ... )( size_t newRows, size_t newCols, A arrayArgs )
-	in {
-		checkSquareDims_!"triangular"( newRows, newCols );
-	} body {
-		size_t arrlen = packedArrayLength(newRows);
-		
-		if( !isInitd_ )
-			containerRef_ = ContainerRef( arrlen, arrayArgs );
-		else
-			containerRef_.resize( arrlen, arrayArgs );
-		
-		size_ = newRows;
+	static if( is( typeof( containerRef_.resize( 0, 0 ) ) ) ) {
+        void resize( A ... )( size_t newRows, size_t newCols, A arrayArgs )
+        in {
+            checkSquareDims_!"triangular"( newRows, newCols );
+        } body {
+            size_t arrlen = packedArrayLength(newRows);
+            
+            if( !isInitd_ )
+                containerRef_ = ContainerRef( arrlen, arrayArgs );
+            else
+                containerRef_.resize( arrlen, arrayArgs );
+            
+            size_ = newRows;
+        }
 	}
 	
 	ref typeof( this ) opAssign( typeof(this) rhs ) {
