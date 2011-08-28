@@ -99,7 +99,7 @@ if( isMatrix!M && isGeneralMatrixStorage!( M.Storage, M.ElementType ) ) {
 
     int info;    
     lapack.potrf!( 'U' )
-        ( mat.length, mat.data, mat.rows, info );
+        ( mat.length, mat.data, mat.leading, info );
         
     // TODO:  Establish a consistent standard for error handling.
     // For now, just return a matrix of NaNs.
@@ -116,7 +116,6 @@ if( isMatrix!M && isGeneralMatrixStorage!( M.Storage, M.ElementType ) ) {
 }
     
 unittest {
-    import std.stdio;
     import std.math;
     
     // Easy way to get a positive definite matrix to test with:
