@@ -104,6 +104,16 @@ struct lapack {
 			writeln( "=> ", matrixToString( 'N', n, n, a, lda ) );
 	}
 	
+	static void potrf( char uplo, T )( size_t n, T* a, size_t lda, ref int info ) {
+	    debug( lapackCalls )
+            writef( "potrf( %s, %s, %s, %s ) ", uplo_, matrixToString( uplo, n, n, a, lda ), lda, info );
+            
+        static if( isFortranType!T && !forceNaive )
+			lapack_.potrf( uplo, toi(n), a, toi(lda), info );
+		else
+			naive_.potrf!( uplo )( toi(n), a, toi(lda), info );
+	}
+	
 	// Extended LAPACK
 	static void xgetrs( char trans, char side, T )( size_t n, size_t nrhs, T *a, size_t lda, int *ipiv, T *b, size_t ldb, ref int info ) {
 		debug( lapackCalls )
@@ -359,5 +369,57 @@ private struct naive_ {
 			}
 			++ pivot[ k ]; // convert to FORTRAN index
 		}
+	}
+	
+	static void potrf( char uplo_, T )( size_t n, T* a, size_t lda, ref int info ) {
+        // Borrowed from Don Clugston's MathExtra library, which he
+        // gave me permission to relicense under Boost.
+        
+        // BUGS:  Originally written for row major storage.  Horribly 
+        // inefficient for column major storage.  This should be regarded ONLY 
+        // as a quick hack and should be replaced or refactored for
+        // column major storage eventually.
+        
+        ref T get( size_t i, size_t j ) {
+			return a[ j * lda + i ];
+		}
+
+        foreach( i; 0..n ) {
+            T sum = get(i, i);
+
+            for( sizediff_t k = i - 1; k >= 0; --k ) {
+                immutable ik = get(i, k);
+                sum -= ik * ik;
+            }
+
+            if (sum > 0.0) {
+                get(i, i) = sqrt( sum );
+
+                foreach( j; i + 1..n ) {
+                    T dot = 0;
+                    foreach( k; 0..i ) {
+                        dot += get( i, k ) * get( j, k );
+                    }
+                    
+                    sum = get( i, j ) - dot;
+                    get( j, i ) = sum / get( i, i );
+                }
+            } else {
+                info = toi( i );
+                // not positive definite (could be caused by rounding errors)
+                get( i, i ) = 0;
+                // make this whole row zero so they have no further effect
+                foreach( j; i + 1..n ) get( j, i ) = 0;
+            }
+        }
+        
+        if( uplo_ == 'U' ) {
+            // Just swap everything.
+            foreach( i; 0..n ) {
+                foreach( j; 0..i ) {
+                    swap( get( i, j ), get( j, i ) );
+                }
+            }
+        }
 	}
 }

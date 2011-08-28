@@ -47,6 +47,8 @@ struct SymmetricArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder s
 		enum storageType  = MatrixStorageType.Hermitian;
 	else
 		enum storageType  = MatrixStorageType.Symmetric;
+		
+	enum isResizable = is( typeof( Storage.init.resize(0,0) ) );
 	
 	this( A ... )( size_t newSize, A arrayArgs ) {
 		size_  = newSize;
@@ -108,18 +110,20 @@ struct SymmetricArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder s
 		size_  = other.size_;
 	}
 	
-	void resize( A ... )( size_t newRows, size_t newCols, A arrayArgs )
-	in {
-		checkSquareDims_!"symmetric"( newRows, newCols );
-	} body {
-		size_t arrlen = packedArrayLength(newRows);
-		
-		if( !isInitd_ )
-			containerRef_ = ContainerRef( arrlen, arrayArgs );
-		else
-			containerRef_.resize( arrlen, arrayArgs );
-		
-		size_ = newRows;
+	static if( is( typeof( containerRef_.resize( 0, 0 ) ) ) ) {
+        void resize( A ... )( size_t newRows, size_t newCols, A arrayArgs )
+        in {
+            checkSquareDims_!"symmetric"( newRows, newCols );
+        } body {
+            size_t arrlen = packedArrayLength(newRows);
+            
+            if( !isInitd_ )
+                containerRef_ = ContainerRef( arrlen, arrayArgs );
+            else
+                containerRef_.resize( arrlen, arrayArgs );
+            
+            size_ = newRows;
+        }
 	}
 	
 	ref typeof( this ) opAssign( typeof(this) rhs ) {
