@@ -1,15 +1,18 @@
-/** This module contains types for interpolation.
-  *
-  * VVA is variable value array
-  * FVA is function value array
-  *
-  * This is an alpha version. The interface can be changed.
+/** Contains links to interpolation libraries.
   *
   * Version: 0.4-a
   * Authors: Maksim Zholudev
-  * Copyright: Copyright (c) 2011, Maksim Zholudev. All rights reserved.
-  * License: Boost License 1.0
+  * Copyright: Copyright (c) 2011, Maksim Zholudev.
+  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
   *
+  * Examples:
+  * --------------
+  * double[] x = [0.0, 1.0];
+  * double[] y = [1.0, 3.0];
+  * auto spline = SplineLinear!(double, double)(x, y);
+  * auto splineView = SplineView!(typeof(spline))(spline);
+  * dobule f = splineView.eval(0.4);
+  * --------------
   */
 module scid.interpolation;
 

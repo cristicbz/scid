@@ -1,3 +1,10 @@
+/** Provides SplineView structure.
+  *
+  * Version: 0.4-a
+  * Authors: Maksim Zholudev
+  * Copyright: Copyright (c) 2011, Maksim Zholudev.
+  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
+  */
 module scid.splines.univariate.view;
 
 import scid.common.traits;
@@ -7,7 +14,7 @@ import scid.splines.support;
   * for function evaluation and accelerates this action if multiple successive
   * evaluations are made on the same interval.
   *
-  * Many SplineView structures can refer the same spline.
+  * Multiple SplineView structures can refer the same spline.
   *
   * Under the hood, it caches the previous value of an index lookup and return
   * it immediately if the subsequent interpolation point falls in the same
@@ -15,15 +22,6 @@ import scid.splines.support;
   *
   * Params:
   *     Tspline = type of spline to wrap
-  *
-  * Examples:
-  * --------------
-  * double[] x = [0.0, 1.0];
-  * double[] y = [1.0, 3.0];
-  * auto spline = SplineLinear!(double, double)(x, y);
-  * auto splineView = SplineView!(typeof(spline))(spline);
-  * dobule f = splineView.eval(0.4);
-  * --------------
   */
 struct SplineView(Tspline)
 {

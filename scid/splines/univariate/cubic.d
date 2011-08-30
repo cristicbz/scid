@@ -1,3 +1,10 @@
+/** Provides univariate cubic spline.
+  *
+  * Version: 0.4-a
+  * Authors: Maksim Zholudev
+  * Copyright: Copyright (c) 2011, Maksim Zholudev.
+  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
+  */
 module scid.splines.univariate.cubic;
 
 import scid.common.meta;
@@ -66,7 +73,7 @@ struct SplineCubic(EocVar, EocFunc,
         static if(optim == SplineOptim.fixVar)
         {
             // TODO: implement this area when the algorithm will be tested
-            static assert(false, "No implementation for fixVar mode");
+            static assert(false, "fixVar mode is not implemented yet");
 
             bool _needUpdateVar;
 

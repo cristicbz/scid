@@ -1,0 +1,3 @@
+* Use RegionAllocator for workspaces.
+
+* Make BoundCond type more global (not cubic splines only).

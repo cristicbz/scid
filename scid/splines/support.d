@@ -1,11 +1,22 @@
-/** This module is for scid.splines internal use only.
+/** Contains features that are used by all splines but need not to be visible
+  * from outside the library.
+  *
+  * Warning: This module is for scid.splines internal use only.
+  * Its interface can be changed at any time and no external program should
+  * rely on it.
+  *
+  * Version: 0.4-a
+  * Authors: Maksim Zholudev
+  * Copyright: Copyright (c) 2011, Maksim Zholudev.
+  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
   */
 module scid.splines.support;
 
 public import scid.common.traits;
 
-/* Returns array type based on given type.
-   If given type is already array-like does nothing */
+/** Returns array type based on given type.
+  * If given type is already array-like does nothing
+  */
 template ProduceArray(ElementOrContainer)
 {
     static if(is(BaseElementType!ElementOrContainer == ElementOrContainer))
@@ -20,8 +31,9 @@ unittest
     static assert(is(ProduceArray!(double[]) == double[]));
 }
 
-/* Common binary search in a sorted array.
-   Returns index of the first element in the first interval that contains x */
+/** Common binary search in a sorted array.
+  * Returns index of the first element in the first interval that contains x
+  */
 size_t binarySearch(A, X)(A a, X x)
 {
     size_t ilo = 0;

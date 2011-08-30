@@ -1,3 +1,10 @@
+/** Provides univariate akima spline.
+  *
+  * Version: 0.4-a
+  * Authors: Maksim Zholudev
+  * Copyright: Copyright (c) 2011, Maksim Zholudev.
+  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
+  */
 module scid.splines.univariate.akima;
 
 import std.math;
@@ -243,4 +250,6 @@ struct SplineAkima(EocVar, EocFunc,
             setAll(x, y);
         }
     }
-} // TODO: unittest
+}
+
+// TODO: unittest
