@@ -8,6 +8,7 @@
 module scid.splines.univariate.cubic;
 
 import scid.common.meta;
+import scid.internal.regionallocator;
 import scid.splines.univariate.base;
 
 /** Cubic one-dimensional spline (order = 3, defect = 1).
@@ -20,14 +21,6 @@ import scid.splines.univariate.base;
 struct SplineCubic(EocVar, EocFunc,
                    SplineOptim optim = SplineOptim.normal)
 {
-    /* TODO: After testing, reduce the number of workspaces by using
-     *       the coefficient arrays as workspaces.
-     *       Attention!
-     *       If FuncType operations are considerably slower than VarType operations
-     *       _wa, _wc and all _aX arryas should be of type VarType. So, no storage
-     *       in coefficient arrays for them.
-     */
-
     mixin splineBase!(EocVar, EocFunc);
 
     // Data and workspaces
@@ -42,23 +35,11 @@ struct SplineCubic(EocVar, EocFunc,
          *     dx = x - _x[i]
          */
 
-        // Workspaces
-        VarType _wa[];
-        FuncType _wb[];
-        VarType _wc[];
-        FuncType _wu[];
-        FuncType _wv[];
-
         void _allocContents(size_t maxSize) // TODO: use scid.core.memory
         {
-            _c1.length = maxSize;
-            _c2.length = maxSize;
-            _c3.length = maxSize;
-            _wa.length = maxSize;
-            _wb.length = maxSize;
-            _wc.length = maxSize;
-            _wu.length = maxSize;
-            _wv.length = maxSize;
+            _c1.length = maxSize - 1;
+            _c2.length = maxSize - 1;
+            _c3.length = maxSize - 1;
             static if(optim == SplineOptim.fixVar)
             {
                 // FIXME: implement after testing of the algorithm
@@ -94,9 +75,33 @@ struct SplineCubic(EocVar, EocFunc,
         {
             void _calcAll()
             {
-                // TODO: optimaize memory usage after testing of the algorithm
+                // Allocate workspaces
+                auto workspace = _newWorkspaceRegAlloc();
+                auto wa = workspace.uninitializedArray!(VarType[])(pointsNum);
+                auto wb = workspace.uninitializedArray!(FuncType[])(pointsNum);
+
                 if(_bcLeftType == BoundCond.periodic)
                 {
+                    /* This block builds linear equation system
+                     * for coefficients _c1[i]:
+                     *   a0[i] * _c1[i-1] +
+                     *   a1[i] * _c1[i] +
+                     *   a2[i] * _c1[i+1] = b[i]
+                     * and then performs standard cyclic sweep procedure for
+                     * tridiagonal matrix.
+                     *
+                     * The coefficients and the right part of the system are
+                     * calculated on-the-fly
+                     */
+
+                    // Additional workspaces
+                    auto wc = workspace.uninitializedArray!(VarType[])
+                                                           (pointsNum);
+                    auto wu = workspace.uninitializedArray!(FuncType[])
+                                                           (pointsNum);
+                    auto wv = workspace.uninitializedArray!(FuncType[])
+                                                           (pointsNum);
+
                     // The index of the last point of spline
                     size_t N = pointsNum - 1;
                     // Some variables for optimization
@@ -120,11 +125,14 @@ struct SplineCubic(EocVar, EocFunc,
 
                     // Build'n'sweep forward
 
-                    // First step
-                    _wa[0] = 0;
-                    _wb[0] = Zero!(FuncType);
-                    _wc[0] = 1;
-                    // TODO: _wa -> _c3, wb -> _c1 _wc -> c2
+                    /* The first equation (i=0) is dealt separately since
+                     * there is no _c1[-1] coefficient.
+                     */
+                    wa[0] = 0;
+                    wb[0] = Zero!(FuncType);
+                    wc[0] = 1;
+
+                    // OK, let's go!
                     for(size_t i = 1; i < N; ++i)
                     {
                         // Optimization
@@ -137,10 +145,10 @@ struct SplineCubic(EocVar, EocFunc,
                         a2 = 1 - a0;
                         b = 3 * (a0 * d0 + a2 * d1);
                         // Forward sweep step
-                        VarType factor = 1 / (a1 + a0 * _wa[i - 1]);
-                        _wa[i] = -a2 * factor;
-                        _wb[i] = (b - a0 * _wb[i - 1]) * factor;
-                        _wc[i] = -a0 * _wc[i - 1] * factor;
+                        VarType factor = 1 / (a1 + a0 * wa[i - 1]);
+                        wa[i] = -a2 * factor;
+                        wb[i] = (b - a0 * wb[i - 1]) * factor;
+                        wc[i] = -a0 * wc[i - 1] * factor;
                         // Optimization
                         h0 = h1;
                         v0 = v1;
@@ -154,39 +162,51 @@ struct SplineCubic(EocVar, EocFunc,
                     b = Zero!(FuncType);
 
                     // TODO: optimize
-                    VarType factor = 1 / (a1 + a0 * _wa[N - 1]);
-                    _wa[N] = -a2 * factor;
-                    _wb[N] = (b - a0 * _wb[N - 1]) * factor;
-                    _wc[N] = -a0 * _wc[N - 1] * factor;
+                    VarType factor = 1 / (a1 + a0 * wa[N - 1]);
+                    wa[N] = -a2 * factor;
+                    wb[N] = (b - a0 * wb[N - 1]) * factor;
+                    wc[N] = -a0 * wc[N - 1] * factor;
 
                     // Sweep backward
-                    // TODO: _wu -> _c2, wv -> _c3
-                    _wu[N - 1] = _wb[N-1];
-                    _wv[N - 1] = One!(FuncType)*(_wa[N-1] + _wc[N-1]);
+                    wu[N - 1] = wb[N-1];
+                    wv[N - 1] = One!(FuncType)*(wa[N-1] + wc[N-1]);
                     for(size_t i = N - 1; i > 0; --i)
                     {
-                        _wu[i - 1] = _wa[i] * _wu[i] + _wb[i];
-                        _wv[i - 1] = _wa[i] * _wv[i] + _wc[i];
+                        wu[i - 1] = wa[i] * wu[i] + wb[i];
+                        wv[i - 1] = wa[i] * wv[i] + wc[i];
                     }
 
-                    FuncType k = (_wb[N] + _wa[N] * _wu[1])
-                              / (1 - _wc[N] - _wa[N] * _wv[1]);
-                    _c1[N] = k;
+                    FuncType k = (wb[N] + wa[N] * wu[1])
+                              / (1 - wc[N] - wa[N] * wv[1]);
+                    FuncType c1tmp = k;
                     for(size_t i = N; i > 0; --i)
                     {
-                        _c1[i - 1] = _wu[i - 1] + k * _wv[i - 1];
+                        _c1[i - 1] = wu[i - 1] + k * wv[i - 1];
                         // Optimization
                         VarType h = _x[i] - _x[i - 1];
                         FuncType v = _f[i] - _f[i - 1];
                         // Calculate remaining coefficients
-                        _c2[i - 1] = (3 * v - h * (2 * _c1[i - 1] + _c1[i]))
+                        _c2[i - 1] = (3 * v - h * (2 * _c1[i - 1] + c1tmp))
                                      / (h * h);
-                        _c3[i - 1] = (-2 * v + h * (_c1[i - 1] + _c1[i]))
+                        _c3[i - 1] = (-2 * v + h * (_c1[i - 1] + c1tmp))
                                      / (h * h * h);
+                        c1tmp = _c1[i - 1];
                     }
                 }
                 else
                 {
+                    /* This block builds linear equation system
+                     * for coefficients _c1[i]:
+                     *   a0[i] * _c1[i-1] +
+                     *   a1[i] * _c1[i] +
+                     *   a2[i] * _c1[i+1] = b[i]
+                     * and then performs standard sweep procedure for
+                     * tridiagonal matrix.
+                     *
+                     * The coefficients and the right part of the system are
+                     * calculated on-the-fly
+                     */
+
                     // The index of the last point of spline
                     size_t N = pointsNum - 1;
                     // Some variables for optimization
@@ -215,11 +235,14 @@ struct SplineCubic(EocVar, EocFunc,
 
                     // Build'n'sweep forward
 
-                    // First step
+                    /* The first equation (i=0) is processed separately since
+                     * there is no _c1[-1] coefficient.
+                     */
                     VarType factor = 1 / a1;
-                    _wa[0] = -a2 * factor;
-                    _wb[0] = b * factor;
+                    wa[0] = -a2 * factor;
+                    wb[0] = b * factor;
 
+                    // Process non-border equations
                     for(size_t i = 1; i < N; ++i)
                     {
                         // Optimization
@@ -232,9 +255,9 @@ struct SplineCubic(EocVar, EocFunc,
                         a2 = 1 - a0;
                         b = 3 * (a0 * d0 + a2 * d1);
                         // Forward sweep step
-                        factor = 1 / (a1 + a0 * _wa[i - 1]);
-                        _wa[i] = -a2 * factor;
-                        _wb[i] = (b - a0 * _wb[i - 1]) * factor;
+                        factor = 1 / (a1 + a0 * wa[i - 1]);
+                        wa[i] = -a2 * factor;
+                        wb[i] = (b - a0 * wb[i - 1]) * factor;
                         // Optimization
                         h0 = h1;
                         v0 = v1;
@@ -256,20 +279,28 @@ struct SplineCubic(EocVar, EocFunc,
                     }
 
                     // Sweep backward and calculate the coefficients
-                    factor = 1 / (a1 + a0 * _wa[N - 1]);
-                    _c1[N] = (b - a0 * _wb[N - 1]) * factor;
+
+                    /* The last equation (i=N) is dealt separately since
+                     * there is no _c1[N] and _c1[N+1] coefficients.
+                     */
+                    FuncType c1tmp = (b - a0 * wb[N - 1]) /
+                                     (a1 + a0 * wa[N - 1]);
+
+                    // Process non-border equations
                     for(size_t i = N; i > 0; --i)
                     {
                         // Backward sweep step
-                        _c1[i - 1] = _wa[i - 1] * _c1[i] + _wb[i - 1];
+                        _c1[i - 1] = wa[i - 1] * c1tmp + wb[i - 1];
                         // Optimization
                         VarType h = _x[i] - _x[i - 1];
                         FuncType v = _f[i] - _f[i - 1];
                         // Calculate remaining coefficients
-                        _c2[i - 1] = (3 * v - h * (2 * _c1[i - 1] + _c1[i]))
+                        _c2[i - 1] = (3 * v - h * (2 * _c1[i - 1] + c1tmp))
                                      / (h * h);
-                        _c3[i - 1] = (-2 * v + h * (_c1[i - 1] + _c1[i]))
+                        _c3[i - 1] = (-2 * v + h * (_c1[i - 1] + c1tmp))
                                      / (h * h * h);
+                        // Optimization
+                        c1tmp = _c1[i - 1];
                     }
                 }
             }
