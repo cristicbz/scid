@@ -493,4 +493,3 @@ unittest {
     assert( mat == [1.0, 4, 7, 2, 5, 8, 3, 6, 9] );
 }
 
-void main() {}
