@@ -143,7 +143,15 @@ if( isMatrix!M && isGeneralMatrixStorage!( M.Storage, M.ElementType ) ) {
     ));
 
     int info;    
-    lapack.potrf!( ( tri == MatrixTriangle.Upper ) ? 'U' : 'L' )
+    
+    static if( M.storageOrder == StorageOrder.ColumnMajor ) {
+        enum uplo = ( tri == MatrixTriangle.Upper ) ? 'U' : 'L';
+    } else {
+        // For row-major storage just flip it around. 
+        enum uplo = ( tri == MatrixTriangle.Upper ) ? 'L' : 'U';
+    }
+    
+    lapack.potrf!( uplo )
         ( mat.length, mat.data, mat.leading, info );
         
     // TODO:  Establish a consistent standard for error handling.
@@ -171,7 +179,8 @@ if( isMatrix!M && isGeneralMatrixStorage!( M.Storage, M.ElementType ) ) {
     
 unittest {
     import std.math;
-    
+    import std.stdio;
+
     // Easy way to get a positive definite matrix to test with:
     auto mat = SymmetricMatrix!double( [
         [14.0, 20, 31], 
@@ -201,6 +210,8 @@ unittest {
     
     Matrix!double gen;
     gen[] = mat;
+    gen[ 2, 0 ] = gen[ 1, 0 ] = gen[ 2, 1 ] = 0;
+    
     choleskyDestructive( gen );
     foreach( row; 0..3 ) foreach( col; 0..3 ) {
         assert( ch[ row, col ] == gen[ row, col ]);
@@ -208,8 +219,26 @@ unittest {
     
     Matrix!double gen2;
     gen2[] = mat;
+    gen2[ 0, 2 ] = gen2[ 0, 1 ] = gen2[ 1, 2 ] = 0;
+    
     choleskyDestructive!( MatrixTriangle.Lower )( gen2 );
     foreach( row; 0..3 ) foreach( col; 0..3 ) {
         assert( gen2[ col, row ] == gen[ row, col ]);
+    }
+
+    Matrix!( double, StorageOrder.RowMajor ) gen3;
+    gen3[] = mat;
+    gen3[ 2, 0 ] = gen3[ 1, 0 ] = gen3[ 2, 1 ] = 0;
+    choleskyDestructive( gen3 );
+    foreach( row; 0..3 ) foreach( col; 0..3 ) {
+        assert( ch[ row, col ] == gen3[ row, col ]);
+    }
+    
+    Matrix!( double, StorageOrder.RowMajor ) gen4;
+    gen4[] = mat;
+    gen4[ 0, 2 ] = gen4[ 0, 1 ] = gen4[ 1, 2 ] = 0;
+    choleskyDestructive!( MatrixTriangle.Lower )( gen4 );
+    foreach( row; 0..3 ) foreach( col; 0..3 ) {
+        assert( ch[ row, col ] == gen4[ col, row ]);
     }
 }

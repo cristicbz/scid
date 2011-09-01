@@ -372,35 +372,44 @@ private struct naive_ {
 	}
 	
 	static void potrf( char uplo_, T )( size_t n, T* a, size_t lda, ref int info ) {
+	    reportNaiveln_();import std.stdio;
+	    
         // Borrowed from Don Clugston's MathExtra library, which he
         // gave me permission to relicense under Boost.
-        
-        // BUGS:  Originally written for row major storage.  Horribly 
-        // inefficient for column major storage.  This should be regarded ONLY 
-        // as a quick hack and should be replaced or refactored for
-        // column major storage eventually.
-        
-        ref T get( size_t i, size_t j ) {
-			return a[ j * lda + i ];
+
+        // This algorithm is designed for row major matrices.  Depending
+        // on whether we're using the lower or upper column, transpose
+        // either before or after doing the decomposition to avoid an
+        // impedance mismatch.
+
+        static if( uplo_ == 'U' ) {
+            transposeSquare( a, n, lda );
+        }
+              
+        ref T get( size_t i, size_t j ) nothrow {
+            // This is correct because we're treating the matrix as row-
+            // major.            
+			return a[ i * lda + j ];
 		}
 
         foreach( i; 0..n ) {
             T sum = get(i, i);
 
             for( sizediff_t k = i - 1; k >= 0; --k ) {
-                immutable ik = get(i, k);
+                immutable ik = get( i, k );
                 sum -= ik * ik;
             }
+
+            auto arr1 = a[ i * lda..i * lda + i ];
 
             if (sum > 0.0) {
                 get(i, i) = sqrt( sum );
 
                 foreach( j; i + 1..n ) {
-                    T dot = 0;
-                    foreach( k; 0..i ) {
-                        dot += get( i, k ) * get( j, k );
-                    }
-                    
+                    import std.numeric;
+                    auto arr2 = a[ j * lda..j * lda + i ];
+                    immutable dot = dotProduct( arr1, arr2 );
+                                        
                     sum = get( i, j ) - dot;
                     get( j, i ) = sum / get( i, i );
                 }
@@ -412,14 +421,76 @@ private struct naive_ {
                 foreach( j; i + 1..n ) get( j, i ) = 0;
             }
         }
+
+        static if( uplo_ == 'L' ) {
+            transposeSquare( a, n, lda );
+        }
+	}
+	
+	unittest {
+	    import scid.matrix;
+	    import std.stdio;
+	    
+        auto mat = Matrix!double( [
+            [14.0, 20, 31], 
+            [0.0, 62, 79], 
+            [0.0, 0, 122],
+            [-1.0, -1.0, -1.0]  // Dummy row to test slicing.
+        ] );
         
-        if( uplo_ == 'U' ) {
-            // Just swap everything.
-            foreach( i; 0..n ) {
-                foreach( j; 0..i ) {
-                    swap( get( i, j ), get( j, i ) );
-                }
-            }
+        auto sliced = mat.view( 0, 3, 0, 3 );
+        
+        int info; 
+        potrf!( 'U' )( 3, sliced.data, 4, info );
+        assert( info == 0 );
+
+        import std.math;
+        alias approxEqual ae;
+        
+        assert( ae( sliced[ 0, 0 ], 3.74166 ) );
+        assert( ae( sliced[ 0, 1 ], 5.34522 ) );
+        assert( ae( sliced[ 0, 2 ], 8.28510 ) );
+        assert( ae( sliced[ 1, 1 ], 5.78174 ) );
+        assert( ae( sliced[ 1, 2 ], 6.00412 ) );
+        assert( ae( sliced[ 2, 2 ], 4.16025 ) );  
+        stderr.writeln(sliced.pretty);
+        auto mat2 = Matrix!double( [
+            [14.0, 0, 0], 
+            [20.0, 62, 0], 
+            [31.0, 79, 122],
+            [-1.0, -1.0, -1.0]  // Dummy row to test slicing.
+        ] );
+        
+        auto sliced2 = mat2.view( 0, 3, 0, 3 );
+        potrf!( 'L' )( 3, sliced2.data, 4, info );
+        assert( info == 0 );
+        foreach( i; 0..3 ) foreach( j; 0..3 ) {
+            assert( ae( sliced[ i, j ], sliced2[ j, i ] ) );
         }
 	}
 }
+
+// Transposes a square general matrix in physical memory.  This is useful for
+// making some matrix factorizations faster by improving memory locality,
+// and often has negligible overhead since most matrix factorizations are
+// O(N^3) and this is O(N^2) where N is the number of rows/columns.
+private void transposeSquare( T )( T* ptr, size_t n, size_t lda ) pure nothrow {
+    
+    ref T get( size_t i, size_t j ) nothrow {
+        return ptr[ j * lda + i ];
+    }    
+    
+    foreach( i; 1..n ) {
+        foreach( j; 0..i ) {
+            swap( get( i, j ), get( j, i ) );
+        }
+    }
+}
+
+unittest {
+    auto mat = [1.0, 2, 3, 4, 5, 6, 7, 8, 9];
+    transposeSquare( mat.ptr, 3, 3 );
+    assert( mat == [1.0, 4, 7, 2, 5, 8, 3, 6, 9] );
+}
+
+void main() {}
