@@ -1,3 +1,5 @@
-* Use RegionAllocator for workspaces.
+* Implement all boundary conditions for Akima spline
 
-* Make BoundCond type more global (not cubic splines only).
+* Test cubic and Akima splines carefully
+
+* Implement fixVar mode for cubic and Akima splines

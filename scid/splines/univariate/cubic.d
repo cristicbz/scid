@@ -1,27 +1,16 @@
 /** Provides univariate cubic spline.
   *
-  * Version: 0.5-a
+  * Version: 0.6-a
   * Authors: Maksim Zholudev
   * Copyright: Copyright (c) 2011, Maksim Zholudev.
   * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
   */
 module scid.splines.univariate.cubic;
 
+public import scid.splines.univariate.boundcond;
+
 import scid.common.meta;
 import scid.splines.univariate.base;
-
-/// Boundary conditons (BC) types
-enum BoundCond
-{
-    /** Periodic spline. BC values are ignored.
-      * Setting it on one side automatically sets it on the other.
-      */
-    periodic,
-    /** Corresponding BC value is the first derivative */
-    deriv1,
-    /** Corresponding BC value is the second derivative */
-    deriv2
-}
 
 /** Cubic one-dimensional spline (order = 3, defect = 1).
   *
@@ -124,64 +113,22 @@ struct SplineCubic(EocVar, EocFunc,
         }
     }
 
-    // Boundary conditions
+    // Boundary conditions support
     public
     {
-        private BoundCond _bcLeftType = BoundCond.deriv2;
-
-        void bcLeftType(BoundCond bc)
+        static bool bcIsSupported(BoundCond bc)
         {
-            _bcLeftType = bc;
-            if(bc == BoundCond.periodic)
-                _bcRightType = BoundCond.periodic;
+            switch(bc)
+            {
+                case BoundCond.natural: return true;
+                case BoundCond.periodic: return true;
+                case BoundCond.deriv1: return true;
+                case BoundCond.deriv2: return true;
+                default: return false;
+            }
         }
 
-        /// Type of BC on the left side
-        BoundCond bcLeftType()
-        {
-            return _bcLeftType;
-        }
-
-        private FuncType _bcLeftVal = Zero!(FuncType);
-
-        void bcLeftVal(FuncType val)
-        {
-            _bcLeftVal = val;
-        }
-
-        /// Value of BC on the left side
-        FuncType bcLeftVal()
-        {
-            return _bcLeftVal;
-        }
-
-        private BoundCond _bcRightType = BoundCond.deriv2;
-
-        void bcRightType(BoundCond bc)
-        {
-            _bcRightType = bc;
-            if(bc == BoundCond.periodic)
-                _bcLeftType = BoundCond.periodic;
-        }
-
-        /// Type of BC on the right side
-        BoundCond bcRightType()
-        {
-            return _bcRightType;
-        }
-
-        private FuncType _bcRightVal = Zero!(FuncType);
-
-        void bcRightVal(FuncType val)
-        {
-            _bcRightVal = val;
-        }
-
-        /// Value of BC on the right side
-        FuncType bcRightVal()
-        {
-            return _bcRightVal;
-        }
+        mixin boundaryConditions;
     }
 
     public
@@ -205,8 +152,8 @@ struct SplineCubic(EocVar, EocFunc,
           *               (true by default)
           */
         this(VarArray x, FuncArray y, bool calcNow = true,
-             BoundCond bcLType = BoundCond.deriv2,
-             BoundCond bcRType = BoundCond.deriv2,
+             BoundCond bcLType = BoundCond.natural,
+             BoundCond bcRType = BoundCond.natural,
              FuncType bcLVal = Zero!(FuncType),
              FuncType bcRVal = Zero!(FuncType))
         {
@@ -288,7 +235,13 @@ body
     FuncType b;
 
     // Boundary conditions on the left side (the first equation)
-    if(bcLeftType == BoundCond.deriv1)
+    if(bcLeftType == BoundCond.natural)
+    {
+        a1 = 2;
+        a2 = 1;
+        b = 3 * d0;
+    }
+    else if(bcLeftType == BoundCond.deriv1)
     {// FIXME: check
         a1 = 1;
         a2 = 0;
@@ -334,7 +287,13 @@ body
     }
 
     // Boundary conditions on the right side (the last equation)
-    if(bcRightType == BoundCond.deriv1)
+    if(bcRightType == BoundCond.natural)
+    {
+        a0 = 1;
+        a1 = 2;
+        b = 3 * d0;
+    }
+    else if(bcRightType == BoundCond.deriv1)
     {// FIXME: check
         a0 = 0;
         a1 = 1;

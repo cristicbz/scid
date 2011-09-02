@@ -1,14 +1,17 @@
-/** Provides univariate akima spline.
+/** Provides univariate Akima spline.
   *
-  * Version: 0.4-a
+  * Version: 0.6-a
   * Authors: Maksim Zholudev
   * Copyright: Copyright (c) 2011, Maksim Zholudev.
   * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
   */
 module scid.splines.univariate.akima;
 
+public import scid.splines.univariate.boundcond;
+
 import std.math;
 
+import scid.common.meta;
 import scid.splines.univariate.base;
 
 /** One-dimensional Akima interpolation.
@@ -21,24 +24,12 @@ import scid.splines.univariate.base;
   *             It is necessary because for this kind of splines not only
   *             linear operations are performed with function values.
   */
-  /* FIXME:
-  * Examples:
-  * Complex function
-  * ----------
-  * alias SplineAkima!(double, Complex!(double),
-  *                    SplineOptim.normal,
-  *                    ".re", ".im") MySpline;
-  * ----------
-  */
 struct SplineAkima(EocVar, EocFunc,
-                   SplineOptim optim = SplineOptim.normal,
-                   Props...)
+                   SplineOptim optim = SplineOptim.normal)
 {
     // TODO: Add different boundary conditions
     // TODO: Add a mechanism for adding points to the curve
-    // FIXME: Implement support of compound types
-    static assert(Props.length == 0,
-                  "Compound types support is not implemented yet");
+    // TODO: Implement support of compound types
 
     mixin splineBase!(EocVar, EocFunc);
 
@@ -71,82 +62,6 @@ struct SplineAkima(EocVar, EocFunc,
     // Numereical core
     package
     {
-        // Some templates for compound types
-        private
-        {
-            string codeWeight(string w, string dl, string dr, Props...)()
-            {
-                string result = "";
-                foreach(p; Props)
-                {
-                    static assert(is(typeof(p) == string),
-                                  "Properties must be strings");
-                    result ~= w ~ p ~
-                              " = abs(" ~
-                                  dl ~ p
-                                  ~ " - " ~
-                                  dr ~ p
-                              ~ ");\n";
-                }
-                return result;
-            }
-
-            string codeCoeff1(string t, string wl, string wr,
-                              string dl, string dr,
-                              Props...)()
-            {
-                string result = "";
-                foreach(p; Props)
-                {
-                    static assert(is(typeof(p) == string),
-                                  "Properties must be strings");
-                    /* Some template magic:
-                     * ----------
-                     * if((wl.p + wr.p) > 0)
-                     *     t.p = (wl.p * d.p + wr.p * d.p) / (wl.p + wr.p);
-                     * else
-                     *     t.p = (dl.p + d.p) / 2;
-                     * ----------
-                     */
-                    result ~= "if(" ~
-                                  "(" ~
-                                      wl ~ p
-                                      ~ " + " ~
-                                      wr ~ p
-                                  ~ ")"
-                                  ~ " > 0"
-                              ~ ")\n    " ~
-                                  t ~ p ~ " = " ~
-                                  "(" ~
-                                      wl ~ p
-                                      ~ " * " ~
-                                      dl ~ p
-                                      ~
-                                      " + "
-                                      ~
-                                      wr ~ p
-                                      ~ " * " ~
-                                      dr ~ p
-                                  ~ ")"
-                                  ~ " / " ~
-                                  "(" ~
-                                      wl ~ p
-                                      ~ " + " ~
-                                      wr ~ p
-                                  ~ ");\n"
-                              ~ "else\n    " ~
-                                  t ~ p ~ " = " ~
-                                  "(" ~
-                                      dl ~ p
-                                      ~ " + " ~
-                                      dr ~ p
-                                  ~ ")" ~
-                                  " / 2;\n";
-                }
-                return result;
-            }
-        }
-
         static if(optim == SplineOptim.fixVar)
         {
             // TODO: implement this area when the algorithm will be tested
@@ -171,37 +86,11 @@ struct SplineAkima(EocVar, EocFunc,
         {
             void _calcAll()
             {
-                /* TODO: After testing, refuse the workspaces by using
-                 *       the coefficient arrays instead.
-                 */
-                size_t N = pointsNum - 1;
-                FuncType[] d = new FuncType[N + 2];
-                FuncType[] w = new FuncType[N + 3];
-                // Calculate slopes and weights
-                for(size_t i = 1; i <= N; ++i)
-                    d[i] = (_f[i] - _f[i - 1]) / (_x[i] - _x[i - 1]);
-                d[0] = 2 * d[1] - d[2];
-                d[N + 1] = 2 * d[N] - d[N - 1];
-                for(size_t i = 1; i <= N + 1; ++i)
-                    w[i] = abs(d[i] - d[i - 1]); // FIXME: real only
-                w[0] = w[1];
-                w[N + 2] = w[N + 1];
-                for(size_t i = 0; i <= N; ++i)
-                    if(w[i] + w[i + 2] > 0)
-                        _c1[i] = (w[i] * d[i] + w[i + 2] * d[i + 1])
-                                 / (w[i] + w[i + 2]);
-                    else
-                        _c1[i] = (d[i] + d[i + 2]) / 2;
-                // Calculate the remaining coefficients
-                for(size_t i = 0; i < N; ++i)
-                {
-                    VarType h = _x[i + 1] - _x[i];
-                    VarType v = _f[i + 1] - _f[i];
-                    _c2[i] = (3 * v - h * (2 * _c1[i] + _c1[i + 1]))
-                             / (h * h);
-                    _c3[i] = (-2 * v + h * (_c1[i] + _c1[i + 1]))
-                             / (h * h * h);
-                }
+                calcCoeffs(_x, _f,
+                           _bcLeftType, _bcRightType,
+                           _bcLeftVal, _bcRightVal,
+                           _c1, _c2, _c3,
+                           workspaceRegAllocStack);
             }
         }
     }
@@ -224,6 +113,24 @@ struct SplineAkima(EocVar, EocFunc,
         }
     }
 
+    // Boundary conditions support
+    public
+    {
+        static bool bcIsSupported(BoundCond bc)
+        {
+            switch(bc)
+            {
+                case BoundCond.natural: return true;
+                case BoundCond.periodic: return true;
+                case BoundCond.deriv1: return false;
+                case BoundCond.deriv2: return false;
+                default: return false;
+            }
+        }
+
+        mixin boundaryConditions;
+    }
+
     public
     {
         /// Minimal number of points needed for the spline
@@ -244,12 +151,101 @@ struct SplineAkima(EocVar, EocFunc,
           *     calcNow = whether to calculate the spline immediately
           *               (true by default)
           */
-        this(VarArray x, FuncArray y, bool calcNow = true)
+        this(VarArray x, FuncArray y, bool calcNow = true,
+             BoundCond bcLType = BoundCond.natural,
+             BoundCond bcRType = BoundCond.natural,
+             FuncType bcLVal = Zero!(FuncType),
+             FuncType bcRVal = Zero!(FuncType))
         {
             this(x.length);
             setAll(x, y);
+            /* For the following case: this(x, y, calcNow, periodic) */
+            if(bcLType == BoundCond.periodic)
+                bcRType = BoundCond.periodic;
+            _bcLeftType = bcLType;
+            _bcRightType = bcRType;
+            _bcLeftVal = bcLVal;
+            _bcRightVal = bcRVal;
+            if(calcNow)
+                calculate();
         }
     }
 }
 
-// TODO: unittest
+/* Calculate Akima spline coefficients
+ * [H.Akima, Journal of the ACM, 17(4), 589 (1970)]
+ */
+private void calcCoeffs(VarType, FuncType)
+                       (in VarType[] x,
+                        in FuncType[] f,
+                        in BoundCond bcLeftType,
+                        in BoundCond bcRightType,
+                        in FuncType bcLeftVal,
+                        in FuncType bcRightVal,
+                        FuncType[] c1,
+                        FuncType[] c2,
+                        FuncType[] c3,
+                        RegionAllocatorStack* wsras)
+{
+    // FIXME: real only
+    // The index of the last point of the spline
+    size_t N = x.length - 1;
+    auto workspace = newRegionAllocatorInStack(wsras);
+    auto d = workspace.uninitializedArray!(FuncType[])(N + 2);
+    auto w = workspace.uninitializedArray!(FuncType[])(N + 3);
+
+    // Calculate slopes
+    for(size_t i = 1; i <= N; ++i)
+        d[i] = (f[i] - f[i - 1]) / (x[i] - x[i - 1]);
+    // Process boundary points
+    if(bcLeftType == BoundCond.periodic)
+    {
+        d[0] = d[N];
+        d[N + 1] = d[1];
+    }
+    else
+    {
+        if(bcLeftType == BoundCond.natural)
+            d[0] = 2 * d[1] - d[2];
+
+        if(bcRightType == BoundCond.natural)
+            d[N + 1] = 2 * d[N] - d[N - 1];
+    }
+
+    // Calculate weights
+    for(size_t i = 1; i <= N + 1; ++i)
+        w[i] = abs(d[i] - d[i - 1]);
+    // Process boundary points
+    if(bcLeftType == BoundCond.periodic)
+    {
+        w[0] = w[N];
+        w[N + 2] = w[2];
+    }
+    else
+    {
+        if(bcLeftType == BoundCond.natural)
+            w[0] = w[1];
+
+        if(bcRightType == BoundCond.natural)
+            w[N + 2] = w[N + 1];
+    }
+    w[0] = w[1];
+    w[N + 2] = w[N + 1];
+    // Calculate the first derivatives
+    for(size_t i = 0; i <= N; ++i)
+        if(w[i] + w[i + 2] > 0)
+            c1[i] = (w[i] * d[i] + w[i + 2] * d[i + 1])
+                     / (w[i] + w[i + 2]);
+        else
+            c1[i] = (d[i] + d[i + 2]) / 2;
+    // Calculate the remaining coefficients
+    for(size_t i = 0; i < N; ++i)
+    {
+        VarType h = x[i + 1] - x[i];
+        VarType v = f[i + 1] - f[i];
+        c2[i] = (3 * v - h * (2 * c1[i] + c1[i + 1]))
+                 / (h * h);
+        c3[i] = (-2 * v + h * (c1[i] + c1[i + 1]))
+                 / (h * h * h);
+    }
+}
