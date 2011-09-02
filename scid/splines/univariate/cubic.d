@@ -8,8 +8,20 @@
 module scid.splines.univariate.cubic;
 
 import scid.common.meta;
-import scid.internal.regionallocator;
 import scid.splines.univariate.base;
+
+/// Boundary conditons (BC) types
+enum BoundCond
+{
+    /** Periodic spline. BC values are ignored.
+      * Setting it on one side automatically sets it on the other.
+      */
+    periodic,
+    /** Corresponding BC value is the first derivative */
+    deriv1,
+    /** Corresponding BC value is the second derivative */
+    deriv2
+}
 
 /** Cubic one-dimensional spline (order = 3, defect = 1).
   *
@@ -73,235 +85,22 @@ struct SplineCubic(EocVar, EocFunc,
         }
         else
         {
+            // Calculate the interpolant parameters
             void _calcAll()
             {
-                // Allocate workspaces
-                auto workspace = _newWorkspaceRegAlloc();
-                auto wa = workspace.uninitializedArray!(VarType[])(pointsNum);
-                auto wb = workspace.uninitializedArray!(FuncType[])(pointsNum);
-
                 if(_bcLeftType == BoundCond.periodic)
                 {
-                    /* This block builds linear equation system
-                     * for coefficients _c1[i]:
-                     *   a0[i] * _c1[i-1] +
-                     *   a1[i] * _c1[i] +
-                     *   a2[i] * _c1[i+1] = b[i]
-                     * and then performs standard cyclic sweep procedure for
-                     * tridiagonal matrix.
-                     *
-                     * The coefficients and the right part of the system are
-                     * calculated on-the-fly
-                     */
-
-                    // Additional workspaces
-                    auto wc = workspace.uninitializedArray!(VarType[])
-                                                           (pointsNum);
-                    auto wu = workspace.uninitializedArray!(FuncType[])
-                                                           (pointsNum);
-                    auto wv = workspace.uninitializedArray!(FuncType[])
-                                                           (pointsNum);
-
-                    // The index of the last point of spline
-                    size_t N = pointsNum - 1;
-                    // Some variables for optimization
-                    VarType h0 = _x[1] - _x[0];
-                    FuncType v0 = _f[1] - _f[0];
-                    FuncType d0 = v0 / h0;
-                    // Linear equation coefficients
-                    VarType a0, a1, a2;
-                    // Linear equation right part
-                    FuncType b;
-
-                    // Boundary conditions on the left side (the first equation)
-                    // TODO: optimize
-                    // FIXME: check
-                    VarType hf = _x[pointsNum-1] - _x[pointsNum-2];
-                    a0 = 1 / hf;
-                    a2 = 1 / h0;
-                    a1 = 2 * (a0 + a2);
-                    b = 3 * ((_f[1] - _f[0]) / (h0 * h0)
-                             + (_f[0] - _f[pointsNum-2]) / (hf * hf));
-
-                    // Build'n'sweep forward
-
-                    /* The first equation (i=0) is dealt separately since
-                     * there is no _c1[-1] coefficient.
-                     */
-                    wa[0] = 0;
-                    wb[0] = Zero!(FuncType);
-                    wc[0] = 1;
-
-                    // OK, let's go!
-                    for(size_t i = 1; i < N; ++i)
-                    {
-                        // Optimization
-                        VarType h1 = _x[i+1] - _x[i];
-                        FuncType v1 = _f[i+1] - _f[i];
-                        FuncType d1 = v1 / h1;
-                        // Calculate eqaution coefficients
-                        a0 = h1 / (h0 + h1);
-                        a1 = 2;
-                        a2 = 1 - a0;
-                        b = 3 * (a0 * d0 + a2 * d1);
-                        // Forward sweep step
-                        VarType factor = 1 / (a1 + a0 * wa[i - 1]);
-                        wa[i] = -a2 * factor;
-                        wb[i] = (b - a0 * wb[i - 1]) * factor;
-                        wc[i] = -a0 * wc[i - 1] * factor;
-                        // Optimization
-                        h0 = h1;
-                        v0 = v1;
-                        d0 = d1;
-                    }
-
-                    // Boundary conditions on the right side (the last equation)
-                    a0 = 0;
-                    a1 = 1;
-                    a2 = -1;
-                    b = Zero!(FuncType);
-
-                    // TODO: optimize
-                    VarType factor = 1 / (a1 + a0 * wa[N - 1]);
-                    wa[N] = -a2 * factor;
-                    wb[N] = (b - a0 * wb[N - 1]) * factor;
-                    wc[N] = -a0 * wc[N - 1] * factor;
-
-                    // Sweep backward
-                    wu[N - 1] = wb[N-1];
-                    wv[N - 1] = One!(FuncType)*(wa[N-1] + wc[N-1]);
-                    for(size_t i = N - 1; i > 0; --i)
-                    {
-                        wu[i - 1] = wa[i] * wu[i] + wb[i];
-                        wv[i - 1] = wa[i] * wv[i] + wc[i];
-                    }
-
-                    FuncType k = (wb[N] + wa[N] * wu[1])
-                              / (1 - wc[N] - wa[N] * wv[1]);
-                    FuncType c1tmp = k;
-                    for(size_t i = N; i > 0; --i)
-                    {
-                        _c1[i - 1] = wu[i - 1] + k * wv[i - 1];
-                        // Optimization
-                        VarType h = _x[i] - _x[i - 1];
-                        FuncType v = _f[i] - _f[i - 1];
-                        // Calculate remaining coefficients
-                        _c2[i - 1] = (3 * v - h * (2 * _c1[i - 1] + c1tmp))
-                                     / (h * h);
-                        _c3[i - 1] = (-2 * v + h * (_c1[i - 1] + c1tmp))
-                                     / (h * h * h);
-                        c1tmp = _c1[i - 1];
-                    }
+                    calcCoeffsPeriodic(_x, _f,
+                                       _c1, _c2, _c3,
+                                       workspaceRegAllocStack);
                 }
                 else
                 {
-                    /* This block builds linear equation system
-                     * for coefficients _c1[i]:
-                     *   a0[i] * _c1[i-1] +
-                     *   a1[i] * _c1[i] +
-                     *   a2[i] * _c1[i+1] = b[i]
-                     * and then performs standard sweep procedure for
-                     * tridiagonal matrix.
-                     *
-                     * The coefficients and the right part of the system are
-                     * calculated on-the-fly
-                     */
-
-                    // The index of the last point of spline
-                    size_t N = pointsNum - 1;
-                    // Some variables for optimization
-                    VarType h0 = _x[1] - _x[0];
-                    FuncType v0 = _f[1] - _f[0];
-                    FuncType d0 = v0 / h0;
-                    // Linear equation coefficients
-                    VarType a0, a1, a2;
-                    // Linear equation right part
-                    FuncType b;
-
-                    // Boundary conditions on the left side (the first equation)
-                    if(_bcLeftType == BoundCond.deriv1)
-                    {// FIXME: check
-                        a1 = 1;
-                        a2 = 0;
-                        b = _bcLeftVal;
-                    }
-                    else if(_bcLeftType == BoundCond.deriv2)
-                    {// FIXME: check
-                        a1 = 2;
-                        a2 = 1;
-                        b = 3 * d0 - h0 * _bcLeftVal / 2;
-                    }
-                    // a0 won't be used in the first equation
-
-                    // Build'n'sweep forward
-
-                    /* The first equation (i=0) is processed separately since
-                     * there is no _c1[-1] coefficient.
-                     */
-                    VarType factor = 1 / a1;
-                    wa[0] = -a2 * factor;
-                    wb[0] = b * factor;
-
-                    // Process non-border equations
-                    for(size_t i = 1; i < N; ++i)
-                    {
-                        // Optimization
-                        VarType h1 = _x[i+1] - _x[i];
-                        FuncType v1 = _f[i+1] - _f[i];
-                        FuncType d1 = v1 / h1;
-                        // Calculate eqaution coefficients
-                        a0 = h1 / (h0 + h1);
-                        a1 = 2;
-                        a2 = 1 - a0;
-                        b = 3 * (a0 * d0 + a2 * d1);
-                        // Forward sweep step
-                        factor = 1 / (a1 + a0 * wa[i - 1]);
-                        wa[i] = -a2 * factor;
-                        wb[i] = (b - a0 * wb[i - 1]) * factor;
-                        // Optimization
-                        h0 = h1;
-                        v0 = v1;
-                        d0 = d1;
-                    }
-
-                    // Boundary conditions on the right side (the last equation)
-                    if(_bcRightType == BoundCond.deriv1)
-                    {// FIXME: check
-                        a0 = 0;
-                        a1 = 1;
-                        b = _bcRightVal;
-                    }
-                    else if(_bcRightType == BoundCond.deriv2)
-                    {// FIXME: check
-                        a0 = 1;
-                        a1 = 2;
-                        b = 3 * d0 - h0 * _bcRightVal / 2;
-                    }
-
-                    // Sweep backward and calculate the coefficients
-
-                    /* The last equation (i=N) is dealt separately since
-                     * there is no _c1[N] and _c1[N+1] coefficients.
-                     */
-                    FuncType c1tmp = (b - a0 * wb[N - 1]) /
-                                     (a1 + a0 * wa[N - 1]);
-
-                    // Process non-border equations
-                    for(size_t i = N; i > 0; --i)
-                    {
-                        // Backward sweep step
-                        _c1[i - 1] = wa[i - 1] * c1tmp + wb[i - 1];
-                        // Optimization
-                        VarType h = _x[i] - _x[i - 1];
-                        FuncType v = _f[i] - _f[i - 1];
-                        // Calculate remaining coefficients
-                        _c2[i - 1] = (3 * v - h * (2 * _c1[i - 1] + c1tmp))
-                                     / (h * h);
-                        _c3[i - 1] = (-2 * v + h * (_c1[i - 1] + c1tmp))
-                                     / (h * h * h);
-                        // Optimization
-                        c1tmp = _c1[i - 1];
-                    }
+                    calcCoeffs(_x, _f,
+                               _bcLeftType, _bcRightType,
+                               _bcLeftVal, _bcRightVal,
+                               _c1, _c2, _c3,
+                               workspaceRegAllocStack);
                 }
             }
         }
@@ -328,19 +127,6 @@ struct SplineCubic(EocVar, EocFunc,
     // Boundary conditions
     public
     {
-        /// Boundary conditons (BC) types
-        enum BoundCond
-        {
-            /** Periodic spline. BC values are ignored.
-              * Setting it on one side automatically sets it on the other.
-              */
-            periodic,
-            /** Corresponding BC value is the first derivative */
-            deriv1,
-            /** Corresponding BC value is the second derivative */
-            deriv2
-        }
-
         private BoundCond _bcLeftType = BoundCond.deriv2;
 
         void bcLeftType(BoundCond bc)
@@ -445,9 +231,250 @@ unittest
     double[] x = [0, 1, 3];
     double[] y = [0, 1, 27];
     auto spl = MySpline(x, y, true,
-                        MySpline.BoundCond.deriv1,
-                        MySpline.BoundCond.deriv1,
+                        BoundCond.deriv1,
+                        BoundCond.deriv1,
                         0, 27);
     assert(spl._calcFunction(2, 1) == 8);
     assert(spl._calcDeriv(2, 1) == 12);
+}
+
+// Calculate cubic spline coefficients
+private void calcCoeffs(VarType, FuncType)
+                       (in VarType[] x,
+                        in FuncType[] f,
+                        in BoundCond bcLeftType,
+                        in BoundCond bcRightType,
+                        in FuncType bcLeftVal,
+                        in FuncType bcRightVal,
+                        FuncType[] c1,
+                        FuncType[] c2,
+                        FuncType[] c3,
+                        RegionAllocatorStack* wsras)
+in
+{
+    assert(f.length == x.length);
+    assert(bcLeftType != BoundCond.periodic);
+    assert(bcRightType != BoundCond.periodic);
+    assert(c1.length >= x.length - 1);
+    assert(c2.length >= x.length - 1);
+    assert(c3.length >= x.length - 1);
+}
+body
+{
+    /* This function builds linear equation system
+     * for coefficients c1[i]:
+     *   a0[i] * c1[i-1] + a1[i] * c1[i] + a2[i] * c1[i+1] = b[i]
+     * and then performs standard sweep procedure for
+     * tridiagonal matrix.
+     *
+     * The coefficients and the right part of the system are
+     * calculated on-the-fly
+     */
+
+    // The index of the last point of the spline
+    size_t N = x.length - 1;
+    // Allocate workspaces
+    auto workspace = newRegionAllocatorInStack(wsras);
+    auto wa = workspace.uninitializedArray!(VarType[])(N + 1);
+    auto wb = workspace.uninitializedArray!(FuncType[])(N + 1);
+
+    // Some variables for optimization
+    VarType h0 = x[1] - x[0];
+    FuncType v0 = f[1] - f[0];
+    FuncType d0 = v0 / h0;
+    // Linear equation coefficients
+    VarType a0, a1, a2;
+    // Linear equation right part
+    FuncType b;
+
+    // Boundary conditions on the left side (the first equation)
+    if(bcLeftType == BoundCond.deriv1)
+    {// FIXME: check
+        a1 = 1;
+        a2 = 0;
+        b = bcLeftVal;
+    }
+    else if(bcLeftType == BoundCond.deriv2)
+    {// FIXME: check
+        a1 = 2;
+        a2 = 1;
+        b = 3 * d0 - h0 * bcLeftVal / 2;
+    }
+    // a0 won't be used in the first equation
+
+    // Build'n'sweep forward
+
+    /* The first equation (i=0) is processed separately since
+     * there is no c1[-1] coefficient.
+     */
+    VarType factor = 1 / a1;
+    wa[0] = -a2 * factor;
+    wb[0] = b * factor;
+
+    // Process non-border equations
+    for(size_t i = 1; i < N; ++i)
+    {
+        // Optimization
+        VarType h1 = x[i+1] - x[i];
+        FuncType v1 = f[i+1] - f[i];
+        FuncType d1 = v1 / h1;
+        // Calculate eqaution coefficients
+        a0 = h1 / (h0 + h1);
+        a1 = 2;
+        a2 = 1 - a0;
+        b = 3 * (a0 * d0 + a2 * d1);
+        // Forward sweep step
+        factor = 1 / (a1 + a0 * wa[i - 1]);
+        wa[i] = -a2 * factor;
+        wb[i] = (b - a0 * wb[i - 1]) * factor;
+        // Optimization
+        h0 = h1;
+        v0 = v1;
+        d0 = d1;
+    }
+
+    // Boundary conditions on the right side (the last equation)
+    if(bcRightType == BoundCond.deriv1)
+    {// FIXME: check
+        a0 = 0;
+        a1 = 1;
+        b = bcRightVal;
+    }
+    else if(bcRightType == BoundCond.deriv2)
+    {// FIXME: check
+        a0 = 1;
+        a1 = 2;
+        b = 3 * d0 - h0 * bcRightVal / 2;
+    }
+
+    // Sweep backward and calculate the coefficients
+
+    /* The last equation (i=N) is dealt separately since
+     * there is no c1[N] and c1[N+1] coefficients.
+     */
+    FuncType c1tmp = (b - a0 * wb[N - 1]) /
+                     (a1 + a0 * wa[N - 1]);
+
+    // Process non-border equations
+    for(size_t i = N; i > 0; --i)
+    {
+        // Backward sweep step
+        c1[i - 1] = wa[i - 1] * c1tmp + wb[i - 1];
+        // Optimization
+        VarType h = x[i] - x[i - 1];
+        FuncType v = f[i] - f[i - 1];
+        // Calculate remaining coefficients
+        c2[i - 1] = (3 * v - h * (2 * c1[i - 1] + c1tmp))
+                     / (h * h);
+        c3[i - 1] = (-2 * v + h * (c1[i - 1] + c1tmp))
+                     / (h * h * h);
+        // Optimization
+        c1tmp = c1[i - 1];
+    }
+}
+
+/* Calculate periodic cubic spline coefficients
+ * The last point in f[] is ignored and assumed to be equal to f[0]
+ */
+private void calcCoeffsPeriodic(VarType, FuncType)
+                               (in VarType[] x,
+                                in FuncType[] f,
+                                FuncType[] c1,
+                                FuncType[] c2,
+                                FuncType[] c3,
+                                RegionAllocatorStack* wsras)
+in
+{
+    assert(f.length == x.length);
+    assert(c1.length >= x.length - 1);
+    assert(c2.length >= x.length - 1);
+    assert(c3.length >= x.length - 1);
+}
+body
+{
+    /* This function builds linear equation system
+     * for coefficients c1[i]:
+     *   a0[i] * c1[i-1] + a1[i] * c1[i] + a2[i] * c1[i+1] = b[i]
+     * and then performs standard cyclic sweep procedure for
+     * tridiagonal matrix.
+     *
+     * The coefficients and the right part of the system are
+     * calculated on-the-fly
+     */
+
+    // The index of the last point of the spline
+    size_t N = x.length - 1;
+    // Allocate workspaces
+    auto workspace = newRegionAllocatorInStack(wsras);
+    auto wa = workspace.uninitializedArray!(VarType[])(N + 1);
+    auto wb = workspace.uninitializedArray!(FuncType[])(N + 1);
+    auto wc = workspace.uninitializedArray!(VarType[])(N + 1);
+    auto wu = workspace.uninitializedArray!(FuncType[])(N + 1);
+    auto wv = workspace.uninitializedArray!(VarType[])(N + 1);
+
+    // Some variables for optimization
+    VarType h0 = x[1] - x[0];
+    FuncType v0 = f[1] - f[0];
+    FuncType d0 = v0 / h0;
+    // Linear equation coefficients
+    VarType a0, a1, a2;
+    // Linear equation right part
+    FuncType b;
+
+    // Build'n'sweep forward
+
+    /* The first equation (i=0) is dealt separately since
+     * there is no _c1[-1] coefficient.
+     */
+    wa[0] = 0;
+    wb[0] = Zero!(FuncType);
+    wc[0] = 1;
+
+    // OK, let's go!
+    for(size_t i = 1; i < N; ++i)
+    {
+        // Optimization
+        VarType h1 = x[i+1] - x[i];
+        FuncType v1 = f[i+1] - f[i];
+        FuncType d1 = v1 / h1;
+        // Calculate eqaution coefficients
+        a0 = h1 / (h0 + h1);
+        a1 = 2;
+        a2 = 1 - a0;
+        b = 3 * (a0 * d0 + a2 * d1);
+        // Forward sweep step
+        VarType factor = 1 / (a1 + a0 * wa[i - 1]);
+        wa[i] = -a2 * factor;
+        wb[i] = (b - a0 * wb[i - 1]) * factor;
+        wc[i] = -a0 * wc[i - 1] * factor;
+        // Optimization
+        h0 = h1;
+        v0 = v1;
+        d0 = d1;
+    }
+
+    // Sweep backward
+    wu[N - 1] = wb[N - 1];
+    wv[N - 1] = wa[N - 1] + wc[N - 1];
+    for(size_t i = N - 1; i > 0; --i)
+    {
+        wu[i - 1] = wa[i - 1] * wu[i] + wb[i - 1];
+        wv[i - 1] = wa[i - 1] * wv[i] + wc[i - 1];
+    }
+
+    FuncType k = (wb[N] + wa[N] * wu[1]) / (1 - wc[N] - wa[N] * wv[1]);
+    FuncType c1tmp = k;
+    for(size_t i = N; i > 0; --i)
+    {
+        c1[i - 1] = wu[i - 1] + k * wv[i - 1];
+        // Optimization
+        VarType h = x[i] - x[i - 1];
+        FuncType v = f[i] - f[i - 1];
+        // Calculate remaining coefficients
+        c2[i - 1] = (3 * v - h * (2 * c1[i - 1] + c1tmp))
+                     / (h * h);
+        c3[i - 1] = (-2 * v + h * (c1[i - 1] + c1tmp))
+                     / (h * h * h);
+        c1tmp = c1[i - 1];
+    }
 }

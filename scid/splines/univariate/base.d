@@ -9,7 +9,6 @@ module scid.splines.univariate.base;
 
 public import std.range;
 
-public import scid.internal.regionallocator;
 public import scid.splines.common;
 public import scid.splines.support;
 
@@ -60,18 +59,6 @@ package mixin template splineBase(EocVar, EocFunc)
             /* Flag indicating that all variable dependent data must be
                recalculated */
             bool _needUpdateVar;
-        }
-
-        /* Create a RegionAllocator for workspaces using the stack
-         * this spline refers to. If it refest to null the default
-         * thread-local stack is used.
-         */
-        auto _newWorkspaceRegAlloc()
-        {
-            if(workspaceRegAllocStack)
-                return workspaceRegAllocStack.newRegionAllocator();
-            else
-                return newRegionAllocator();
         }
     }
 

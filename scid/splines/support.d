@@ -13,6 +13,7 @@
 module scid.splines.support;
 
 public import scid.common.traits;
+public import scid.internal.regionallocator;
 
 /** Returns array type based on given type.
   * If given type is already array-like does nothing
@@ -66,4 +67,15 @@ unittest
     assert(binarySearch(a, 1.5) == 1);
     assert(binarySearch(a, 2.5) == 2);
     assert(binarySearch(a, 3) == 2);
+}
+
+/* Create a RegionAllocator using the stack specified.
+ * If null is specified then thread-local stack is used.
+ */
+RegionAllocator newRegionAllocatorInStack(RegionAllocatorStack* stack)
+{
+    if(stack)
+        return stack.newRegionAllocator();
+    else
+        return newRegionAllocator();
 }
