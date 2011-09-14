@@ -5,10 +5,10 @@
   * Its interface can be changed at any time and no external program should
   * rely on it.
   *
-  * Version: 0.4-a
+  * Version: 0.7-b
   * Authors: Maksim Zholudev
   * Copyright: Copyright (c) 2011, Maksim Zholudev.
-  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
+  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
   */
 module scid.splines.support;
 

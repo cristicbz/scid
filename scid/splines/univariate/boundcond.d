@@ -1,9 +1,9 @@
 /** Contains common features of boundary conditions of univariate splines.
   *
-  * Version: 0.6-a
+  * Version: 0.7-b
   * Authors: Maksim Zholudev
   * Copyright: Copyright (c) 2011, Maksim Zholudev.
-  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
+  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
   */
 module scid.splines.univariate.boundcond;
 
@@ -32,7 +32,7 @@ package mixin template boundaryConditions()
     @property void bcLeftType(BoundCond bc)
     in
     {
-        assert(bcIsSupported(bc));
+        assert(bcIsSupported(bc), "Boundary condition is not supported");
     }
     body
     {
@@ -70,7 +70,7 @@ package mixin template boundaryConditions()
     @property void bcRightType(BoundCond bc)
     in
     {
-        assert(bcIsSupported(bc));
+        assert(bcIsSupported(bc), "Boundary condition is not supported");
     }
     body
     {

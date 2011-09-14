@@ -1,9 +1,12 @@
 /** Provides univariate Akima spline.
   *
-  * Version: 0.6-a
+  * Version: 0.7-b
   * Authors: Maksim Zholudev
   * Copyright: Copyright (c) 2011, Maksim Zholudev.
-  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
+  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
+  * Bugs:
+  *     No optimization support. $(BR)
+  *     1st and 2nd derivative boundary conditions are not supported.
   */
 module scid.splines.univariate.akima;
 
@@ -16,13 +19,13 @@ import scid.splines.univariate.base;
 
 /** One-dimensional Akima interpolation.
   *
+  * Natural boundary conditions are non-trivial and described in
+  * [H.Akima, Journal of the ACM, 17(4), 589 (1970)]
+  *
   * Params:
-  *     EocVar = type of variable
-  *     EocFunc = type of function
+  *     EocVar = type of variable or variable value array (VVA)
+  *     EocFunc = type of function or function value array (FVA)
   *     optim = spline optimization type (normal by default)
-  *     Props = strings, describing properties of FuncType type to process.
-  *             It is necessary because for this kind of splines not only
-  *             linear operations are performed with function values.
   */
 struct SplineAkima(EocVar, EocFunc,
                    SplineOptim optim = SplineOptim.normal)
@@ -30,6 +33,7 @@ struct SplineAkima(EocVar, EocFunc,
     // TODO: Add different boundary conditions
     // TODO: Add a mechanism for adding points to the curve
     // TODO: Implement support of compound types
+    // TODO: Unittest
 
     mixin splineBase!(EocVar, EocFunc);
 

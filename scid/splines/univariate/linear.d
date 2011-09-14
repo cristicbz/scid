@@ -1,9 +1,9 @@
 /** Provides univariate linear spline.
   *
-  * Version: 0.4-a
+  * Version: 0.7-b
   * Authors: Maksim Zholudev
   * Copyright: Copyright (c) 2011, Maksim Zholudev.
-  * License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
+  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
   */
 module scid.splines.univariate.linear;
 
@@ -11,9 +11,11 @@ import scid.splines.univariate.base;
 
 /** Linear one-dimensional spline (order = 1, defect = 1).
   *
+  * No boundary conditions is supported.
+  *
   * Params:
-  *     EocVar = type of variable
-  *     EocFunc = type of function
+  *     EocVar = type of variable or variable value array (VVA)
+  *     EocFunc = type of function or function value array (FVA)
   *     optim = spline optimization type (normal by default)
   */
 struct SplineLinear(EocVar, EocFunc,
@@ -126,7 +128,7 @@ struct SplineLinear(EocVar, EocFunc,
             return _c1[0..(pointsNum - 1)];
         }
     }
-} // TODO: unittest
+}
 
 unittest
 {
