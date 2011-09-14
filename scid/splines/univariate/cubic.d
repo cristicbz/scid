@@ -169,6 +169,25 @@ struct SplineCubic(EocVar, EocFunc,
             if(calcNow)
                 calculate();
         }
+
+        /** Spline coefficients (read only)
+          */
+        @property const(FuncType)[] c1()
+        {
+            return _c1[0..(pointsNum - 1)];
+        }
+
+        ///ditto
+        @property const(FuncType)[] c2()
+        {
+            return _c2[0..(pointsNum - 1)];
+        }
+
+        ///ditto
+        @property const(FuncType)[] c3()
+        {
+            return _c3[0..(pointsNum - 1)];
+        }
     }
 }
 

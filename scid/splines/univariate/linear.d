@@ -118,6 +118,13 @@ struct SplineLinear(EocVar, EocFunc,
             if(calcNow)
                 calculate();
         }
+
+        /** Spline coefficients (read only)
+          */
+        @property const(FuncType)[] c1()
+        {
+            return _c1[0..(pointsNum - 1)];
+        }
     }
 } // TODO: unittest
 
