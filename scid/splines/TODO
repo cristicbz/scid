@@ -1,0 +1,5 @@
+* Implement all boundary conditions for Akima spline
+
+* Test cubic and Akima splines carefully
+
+* Implement fixVar mode for cubic and Akima splines
