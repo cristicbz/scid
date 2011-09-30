@@ -30,14 +30,14 @@ import scid.splines.univariate.base;
 struct SplineAkima(EocVar, EocFunc,
                    SplineOptim optim = SplineOptim.normal)
 {
-    // TODO: Add different boundary conditions
+    // FIXME: Add different boundary conditions
     // TODO: Add a mechanism for adding points to the curve
-    // TODO: Implement support of compound types
+    // FIXME: Implement support of compound types
     // TODO: Unittest
 
     mixin splineBase!(EocVar, EocFunc);
 
-    // Data and workspaces
+    // Interpolant storage
     private
     {
         // Spline parameters:
@@ -49,7 +49,13 @@ struct SplineAkima(EocVar, EocFunc,
          *     dx = x - _x[i]
          */
 
-        void _allocContents(size_t maxSize) // TODO: use scid.core.memory
+        static if(optim == SplineOptim.fixVar)
+        {
+            /* Data depending only on variable values */
+            // FIXME: implement after testing of the algorithm
+        }
+
+        void _allocContents(size_t maxSize)
         {
             _c1.length = maxSize;
             _c2.length = maxSize - 1;
@@ -70,11 +76,6 @@ struct SplineAkima(EocVar, EocFunc,
         {
             // TODO: implement this area when the algorithm will be tested
             static assert(false, "fixVar mode is not implemented yet");
-
-            bool _needUpdateVar;
-
-            /* Data depending only on variable values */
-            // FIXME: implement after testing of the algorithm
 
             void _calcVarDependent()
             {
@@ -210,7 +211,6 @@ private void calcCoeffs(VarType, FuncType)
                         FuncType[] c3,
                         RegionAllocatorStack* wsras)
 {
-    // FIXME: real only
     // The index of the last point of the spline
     size_t N = x.length - 1;
     auto workspace = newRegionAllocatorInStack(wsras);

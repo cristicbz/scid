@@ -28,7 +28,7 @@ struct SplineCubic(EocVar, EocFunc,
 {
     mixin splineBase!(EocVar, EocFunc);
 
-    // Data and workspaces
+    // Interpolant storage
     private
     {
         // Spline parameters:
@@ -40,7 +40,13 @@ struct SplineCubic(EocVar, EocFunc,
          *     dx = x - _x[i]
          */
 
-        void _allocContents(size_t maxSize) // TODO: use scid.core.memory
+        static if(optim == SplineOptim.fixVar)
+        {
+            /* Data depending only on variable values */
+            // FIXME: implement after testing of the algorithm
+        }
+
+        void _allocContents(size_t maxSize)
         {
             _c1.length = maxSize - 1;
             _c2.length = maxSize - 1;
@@ -60,11 +66,6 @@ struct SplineCubic(EocVar, EocFunc,
         {
             // TODO: implement this area when the algorithm will be tested
             static assert(false, "fixVar mode is not implemented yet");
-
-            bool _needUpdateVar;
-
-            /* Data depending only on variable values */
-            // FIXME: implement after testing of the algorithm
 
             void _calcVarDependent()
             {
