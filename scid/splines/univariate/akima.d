@@ -16,6 +16,7 @@ import std.math;
 
 import scid.common.meta;
 import scid.splines.univariate.base;
+import scid.splines.univariate.poly3;
 
 /** One-dimensional Akima interpolation.
   *
@@ -36,36 +37,19 @@ struct SplineAkima(EocVar, EocFunc,
     // TODO: Unittest
 
     mixin splineBase!(EocVar, EocFunc);
+    mixin poly3Base!(VarType, FuncType);
 
     // Interpolant storage
     private
     {
-        // Spline parameters:
-        FuncType[] _c1;
-        FuncType[] _c2;
-        FuncType[] _c3;
-        /* The interpolant is:
-         *     f(x) = _f[i] + _c1[i] * dx + _c2[i] * dx*dx + _c3[i] * dx*dx*dx
-         *     dx = x - _x[i]
-         */
-
         static if(optim == SplineOptim.fixVar)
         {
             /* Data depending only on variable values */
             // FIXME: implement after testing of the algorithm
-        }
 
-        void _allocContents(size_t maxSize)
-        {
-            _c1.length = maxSize;
-            _c2.length = maxSize - 1;
-            _c3.length = maxSize - 1;
-
-            static if(optim == SplineOptim.fixVar)
+            void _allocOptFixVar(size_t maxSize)
             {
-                // FIXME: implement after testing of the algorithm
             }
-            _maxSize = maxSize;
         }
     }
 
@@ -97,24 +81,6 @@ struct SplineAkima(EocVar, EocFunc,
                            _c1, _c2, _c3,
                            workspaceRegAllocStack);
             }
-        }
-    }
-
-    // Function evaluation code
-    package
-    {
-        FuncType _calcFunction(VarType x, size_t index)
-        {
-            double dx = x - _x[index];
-            return _f[index] + dx * (_c1[index]
-                                     + dx * (_c2[index] + dx * _c3[index]));
-        }
-
-        // Calculate first derivative in a given interval
-        FuncType _calcDeriv(VarType x, size_t index)
-        {
-            double dx = x - _x[index];
-            return _c1[index] + dx * (2 * _c2[index] + dx * 3 * _c3[index]);
         }
     }
 
@@ -173,25 +139,6 @@ struct SplineAkima(EocVar, EocFunc,
             _bcRightVal = bcRVal;
             if(calcNow)
                 calculate();
-        }
-
-        /** Spline coefficients (read only)
-          */
-        @property const(FuncType)[] c1()
-        {
-            return _c1[0..(pointsNum - 1)];
-        }
-
-        ///ditto
-        @property const(FuncType)[] c2()
-        {
-            return _c2[0..(pointsNum - 1)];
-        }
-
-        ///ditto
-        @property const(FuncType)[] c3()
-        {
-            return _c3[0..(pointsNum - 1)];
         }
     }
 }
