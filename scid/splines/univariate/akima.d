@@ -207,7 +207,7 @@ private void calcCoeffs(VarType, FuncType)
             c1[i] = (w[i] * d[i] + w[i + 2] * d[i + 1])
                      / (w[i] + w[i + 2]);
         else
-            c1[i] = (d[i] + d[i + 2]) / 2;
+            c1[i] = (d[i] + d[i + 1]) / 2;
     // Calculate the remaining coefficients
     for(size_t i = 0; i < N; ++i)
     {
