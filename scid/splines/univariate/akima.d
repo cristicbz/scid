@@ -20,8 +20,8 @@ import scid.splines.univariate.poly3;
 
 /** One-dimensional Akima interpolation.
   *
-  * Natural boundary conditions are non-trivial and described in
-  * [H.Akima, Journal of the ACM, 17(4), 589 (1970)]
+  * Natural boundary conditions are non-trivial and described in the original
+  * paper [H.Akima, Journal of the ACM, 17(4), 589 (1970)]
   *
   * Params:
   *     EocVar = type of variable or variable value array (VVA)
@@ -93,7 +93,7 @@ struct SplineAkima(EocVar, EocFunc,
             {
                 case BoundCond.natural: return true;
                 case BoundCond.periodic: return true;
-                case BoundCond.deriv1: return false;
+                case BoundCond.deriv1: return true;
                 case BoundCond.deriv2: return false;
                 default: return false;
             }
@@ -167,7 +167,10 @@ private void calcCoeffs(VarType, FuncType)
     // Calculate slopes
     for(size_t i = 1; i <= N; ++i)
         d[i] = (f[i] - f[i - 1]) / (x[i] - x[i - 1]);
-    // Process boundary points
+    /* Process boundary points:
+     *   calculate in a special way d[0] and d[N + 1] slopes
+     *   for which x[-1] and x[N + 1] would have been required
+     */
     if(bcLeftType == BoundCond.periodic)
     {
         d[0] = d[N];
@@ -177,15 +180,22 @@ private void calcCoeffs(VarType, FuncType)
     {
         if(bcLeftType == BoundCond.natural)
             d[0] = 2 * d[1] - d[2];
+        else if(bcLeftType == BoundCond.deriv1)
+            d[0] = 2 * bcLeftVal - d[1];
 
         if(bcRightType == BoundCond.natural)
             d[N + 1] = 2 * d[N] - d[N - 1];
+        else if(bcRightType == BoundCond.deriv1)
+            d[N + 1] = 2 * bcRightVal - d[N];
     }
 
     // Calculate weights
     for(size_t i = 1; i <= N + 1; ++i)
         w[i] = abs(d[i] - d[i - 1]);
-    // Process boundary points
+    /* Process boundary points:
+     *   calculate in a special way w[0] and w[N + 2] weights
+     *   for which d[-1] and d[N + 2] would have been required
+     */
     if(bcLeftType == BoundCond.periodic)
     {
         w[0] = w[N];
@@ -195,12 +205,14 @@ private void calcCoeffs(VarType, FuncType)
     {
         if(bcLeftType == BoundCond.natural)
             w[0] = w[1];
+        else if(bcLeftType == BoundCond.deriv1)
+            w[0] = w[2];
 
         if(bcRightType == BoundCond.natural)
             w[N + 2] = w[N + 1];
+        else if(bcRightType == BoundCond.deriv1)
+            w[N + 2] = w[N];
     }
-    w[0] = w[1];
-    w[N + 2] = w[N + 1];
     // Calculate the first derivatives
     for(size_t i = 0; i <= N; ++i)
         if(w[i] + w[i + 2] > 0)
