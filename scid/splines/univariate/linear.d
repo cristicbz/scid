@@ -11,7 +11,7 @@ import scid.splines.univariate.base;
 
 /** Linear one-dimensional spline (order = 1, defect = 1).
   *
-  * No boundary conditions is supported.
+  * No boundary conditions are supported.
   *
   * Params:
   *     EocVar = type of variable or variable value array (VVA)
@@ -23,7 +23,7 @@ struct SplineLinear(EocVar, EocFunc,
 {
     mixin splineBase!(EocVar, EocFunc);
 
-    // Data
+    // Interpolant and optimization variables storage
     private
     {
         // Spline parameters:
@@ -33,7 +33,13 @@ struct SplineLinear(EocVar, EocFunc,
          *     dx = x - _x[i]
          */
 
-        void _allocContents(size_t maxSize) // TODO: use scid.core.memory
+        static if(optim == SplineOptim.fixVar)
+        {
+            /* Data depending only on variable values */
+            private VarType[] _rdx;
+        }
+
+        void _allocContents(size_t maxSize)
         {
             _c1.length = maxSize - 1;
             static if(optim == SplineOptim.fixVar)
@@ -49,12 +55,6 @@ struct SplineLinear(EocVar, EocFunc,
     {
         static if(optim == SplineOptim.fixVar)
         {
-            /* NOTE: division is slower than multiplication.
-             */
-
-            /* Data depending only on variable values */
-            private VarType[] _rdx;
-
             void _calcVarDependent()
             {
                 for(size_t i = 0; i < _x.length - 1; ++i)
@@ -135,6 +135,17 @@ unittest
     double[] x = [1, 2, 3];
     double[] y = [-1, 1, -1];
     auto spl = SplineLinear!(double, double)(x, y);
+    assert(spl._calcFunction(1.5, 0) == 0);
+    assert(spl._calcDeriv(1.5, 0) == 2);
+    assert(spl._calcFunction(2.75, 1) == -0.5);
+    assert(spl._calcDeriv(2.75, 1) == -2);
+}
+
+unittest
+{
+    double[] x = [1, 2, 3];
+    double[] y = [-1, 1, -1];
+    auto spl = SplineLinear!(double, double, SplineOptim.fixVar)(x, y);
     assert(spl._calcFunction(1.5, 0) == 0);
     assert(spl._calcDeriv(1.5, 0) == 2);
     assert(spl._calcFunction(2.75, 1) == -0.5);

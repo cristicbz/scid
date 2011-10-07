@@ -16,11 +16,12 @@ import std.math;
 
 import scid.common.meta;
 import scid.splines.univariate.base;
+import scid.splines.univariate.poly3;
 
 /** One-dimensional Akima interpolation.
   *
-  * Natural boundary conditions are non-trivial and described in
-  * [H.Akima, Journal of the ACM, 17(4), 589 (1970)]
+  * Natural boundary conditions are non-trivial and described in the original
+  * paper [H.Akima, Journal of the ACM, 17(4), 589 (1970)]
   *
   * Params:
   *     EocVar = type of variable or variable value array (VVA)
@@ -30,36 +31,25 @@ import scid.splines.univariate.base;
 struct SplineAkima(EocVar, EocFunc,
                    SplineOptim optim = SplineOptim.normal)
 {
-    // TODO: Add different boundary conditions
+    // FIXME: Add different boundary conditions
     // TODO: Add a mechanism for adding points to the curve
-    // TODO: Implement support of compound types
+    // FIXME: Implement support of compound types
     // TODO: Unittest
 
     mixin splineBase!(EocVar, EocFunc);
+    mixin poly3Base!(VarType, FuncType);
 
-    // Data and workspaces
+    // Interpolant storage
     private
     {
-        // Spline parameters:
-        FuncType[] _c1;
-        FuncType[] _c2;
-        FuncType[] _c3;
-        /* The interpolant is:
-         *     f(x) = _f[i] + _c1[i] * dx + _c2[i] * dx*dx + _c3[i] * dx*dx*dx
-         *     dx = x - _x[i]
-         */
-
-        void _allocContents(size_t maxSize) // TODO: use scid.core.memory
+        static if(optim == SplineOptim.fixVar)
         {
-            _c1.length = maxSize;
-            _c2.length = maxSize - 1;
-            _c3.length = maxSize - 1;
+            /* Data depending only on variable values */
+            // FIXME: implement after testing of the algorithm
 
-            static if(optim == SplineOptim.fixVar)
+            void _allocOptFixVar(size_t maxSize)
             {
-                // FIXME: implement after testing of the algorithm
             }
-            _maxSize = maxSize;
         }
     }
 
@@ -70,11 +60,6 @@ struct SplineAkima(EocVar, EocFunc,
         {
             // TODO: implement this area when the algorithm will be tested
             static assert(false, "fixVar mode is not implemented yet");
-
-            bool _needUpdateVar;
-
-            /* Data depending only on variable values */
-            // FIXME: implement after testing of the algorithm
 
             void _calcVarDependent()
             {
@@ -99,24 +84,6 @@ struct SplineAkima(EocVar, EocFunc,
         }
     }
 
-    // Function evaluation code
-    package
-    {
-        FuncType _calcFunction(VarType x, size_t index)
-        {
-            double dx = x - _x[index];
-            return _f[index] + dx * (_c1[index]
-                                     + dx * (_c2[index] + dx * _c3[index]));
-        }
-
-        // Calculate first derivative in a given interval
-        FuncType _calcDeriv(VarType x, size_t index)
-        {
-            double dx = x - _x[index];
-            return _c1[index] + dx * (2 * _c2[index] + dx * 3 * _c3[index]);
-        }
-    }
-
     // Boundary conditions support
     public
     {
@@ -126,7 +93,7 @@ struct SplineAkima(EocVar, EocFunc,
             {
                 case BoundCond.natural: return true;
                 case BoundCond.periodic: return true;
-                case BoundCond.deriv1: return false;
+                case BoundCond.deriv1: return true;
                 case BoundCond.deriv2: return false;
                 default: return false;
             }
@@ -173,25 +140,6 @@ struct SplineAkima(EocVar, EocFunc,
             if(calcNow)
                 calculate();
         }
-
-        /** Spline coefficients (read only)
-          */
-        @property const(FuncType)[] c1()
-        {
-            return _c1[0..(pointsNum - 1)];
-        }
-
-        ///ditto
-        @property const(FuncType)[] c2()
-        {
-            return _c2[0..(pointsNum - 1)];
-        }
-
-        ///ditto
-        @property const(FuncType)[] c3()
-        {
-            return _c3[0..(pointsNum - 1)];
-        }
     }
 }
 
@@ -210,7 +158,6 @@ private void calcCoeffs(VarType, FuncType)
                         FuncType[] c3,
                         RegionAllocatorStack* wsras)
 {
-    // FIXME: real only
     // The index of the last point of the spline
     size_t N = x.length - 1;
     auto workspace = newRegionAllocatorInStack(wsras);
@@ -220,7 +167,10 @@ private void calcCoeffs(VarType, FuncType)
     // Calculate slopes
     for(size_t i = 1; i <= N; ++i)
         d[i] = (f[i] - f[i - 1]) / (x[i] - x[i - 1]);
-    // Process boundary points
+    /* Process boundary points:
+     *   calculate in a special way d[0] and d[N + 1] slopes
+     *   for which x[-1] and x[N + 1] would have been required
+     */
     if(bcLeftType == BoundCond.periodic)
     {
         d[0] = d[N];
@@ -230,15 +180,22 @@ private void calcCoeffs(VarType, FuncType)
     {
         if(bcLeftType == BoundCond.natural)
             d[0] = 2 * d[1] - d[2];
+        else if(bcLeftType == BoundCond.deriv1)
+            d[0] = 2 * bcLeftVal - d[1];
 
         if(bcRightType == BoundCond.natural)
             d[N + 1] = 2 * d[N] - d[N - 1];
+        else if(bcRightType == BoundCond.deriv1)
+            d[N + 1] = 2 * bcRightVal - d[N];
     }
 
     // Calculate weights
     for(size_t i = 1; i <= N + 1; ++i)
         w[i] = abs(d[i] - d[i - 1]);
-    // Process boundary points
+    /* Process boundary points:
+     *   calculate in a special way w[0] and w[N + 2] weights
+     *   for which d[-1] and d[N + 2] would have been required
+     */
     if(bcLeftType == BoundCond.periodic)
     {
         w[0] = w[N];
@@ -248,19 +205,21 @@ private void calcCoeffs(VarType, FuncType)
     {
         if(bcLeftType == BoundCond.natural)
             w[0] = w[1];
+        else if(bcLeftType == BoundCond.deriv1)
+            w[0] = w[2];
 
         if(bcRightType == BoundCond.natural)
             w[N + 2] = w[N + 1];
+        else if(bcRightType == BoundCond.deriv1)
+            w[N + 2] = w[N];
     }
-    w[0] = w[1];
-    w[N + 2] = w[N + 1];
     // Calculate the first derivatives
     for(size_t i = 0; i <= N; ++i)
         if(w[i] + w[i + 2] > 0)
             c1[i] = (w[i] * d[i] + w[i + 2] * d[i + 1])
                      / (w[i] + w[i + 2]);
         else
-            c1[i] = (d[i] + d[i + 2]) / 2;
+            c1[i] = (d[i] + d[i + 1]) / 2;
     // Calculate the remaining coefficients
     for(size_t i = 0; i < N; ++i)
     {
