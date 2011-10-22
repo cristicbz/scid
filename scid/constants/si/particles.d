@@ -1,6 +1,6 @@
 /** Contains characteristics of elementary particles
   *
-  * $(DDOC_SECTION_H System of units:) symmetric CGS
+  * $(DDOC_SECTION_H System of units:) symmetric SI
   * Origin:  $(LINK2 http://physics.nist.gov/cuu/index.html,
   *            The NIST Reference on Constants, Units, and Uncertainty)
   * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
@@ -8,4 +8,6 @@
   *
   */
 
-module scid.constants.cgs.particles;
+module scid.constants.si.particles;
+
+// TODO
