@@ -32,3 +32,7 @@ enum PLANCK : double
 /// Elementary charge [statC]
 enum double ECHARGE = 4.803_204_25e-10;
 enum double U_ECHARGE = 0.000_000_10e-10; /// Standard uncertainty
+
+/// Fine-structure constant
+enum double FINE_STRUCTURE = 7.297_352_5698e-3;
+enum double D_FINE_STRUCTURE = 0.000_000_0024e-3; /// Standard uncertainty
