@@ -18,21 +18,17 @@ enum double U_GRAVITY = 0.000_80e-8; /// Standard uncertainty
 enum double SPEEDLIGHT = 2.997_924_58e+10;
 
 /// Planck constant [erg * s]
-enum PLANCK : double
-{
-    /// Planck constant
-    H = 6.626_069_57e-27,
-    U_H = 0.000_000_29e-27, /// Standard uncertainty
+enum double PLANCK = 6.626_069_57e-27;
+enum double D_PLANCK = 0.000_000_29e-27, /// Standard uncertainty
 
-    /// Planck constant over 2*pi
-    HBAR = 1.054_571_726e-27,
-    U_HBAR = 0.000_000_047e-27 /// Standard uncertainty
-}
+/// Planck constant over 2*pi [erg * s]
+enum double PLANCK_2PI = 1.054_571_726e-27,
+enum double D_PLANCK_2PI = 0.000_000_047e-27 /// Standard uncertainty
 
 /// Elementary charge [statC]
 enum double ECHARGE = 4.803_204_25e-10;
-enum double U_ECHARGE = 0.000_000_10e-10; /// Standard uncertainty
+enum double D_ECHARGE = 0.000_000_10e-10; /// Standard uncertainty
 
 /// Fine-structure constant
-enum double FINE_STRUCTURE = 7.297_352_5698e-3;
-enum double D_FINE_STRUCTURE = 0.000_000_0024e-3; /// Standard uncertainty
+enum double FINE_STRUCT = 7.297_352_5698e-3;
+enum double D_FINE_STRUCT = 0.000_000_0024e-3; /// Standard uncertainty

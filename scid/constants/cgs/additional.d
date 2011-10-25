@@ -19,8 +19,8 @@ enum double AVOGADRO = 6.022_141_29e+23;
 enum double D_AVOGADRO = 0.000_000_27e+23; /// Standard uncertainty
 
 /// Bohr magneton [erg / G]
-enum double BOHR_MAGNETON = 927.400_968e-23;
-enum double D_BOHR_MAGNETON = 0.000_020e-23; /// Standard uncertainty
+enum double BOHR_MAGNETON = 9.274_009_68e-25;
+enum double D_BOHR_MAGNETON = 0.000_000_20e-25; /// Standard uncertainty
 
 /// Boltzman constant [erg]
 enum double BOLTZMAN = 1.380_6488e-16;
