@@ -12,7 +12,7 @@
   * LengthInMeters = LengthInAngstroms * ANGSTROM.METER;
   * ----------
   *
-  * _PS postfix means "per second" ($BR)
+  * _PS postfix means "per second" $(BR)
   * _PM postfix means "per meter"
   */
 
