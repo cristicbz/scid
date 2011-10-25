@@ -1,4 +1,4 @@
-/** Contains fundamental world constants
+/** Contains fundamental and other widely used constants
   *
   * $(DDOC_SECTION_H System of units:) symmetric SI
   * Origin:  $(LINK2 http://physics.nist.gov/cuu/index.html,
@@ -8,6 +8,6 @@
   *
   */
 
-module scid.constants.si.fundamental;
+module scid.constants.si.basic;
 
 // TODO

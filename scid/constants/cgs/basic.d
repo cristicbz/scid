@@ -1,4 +1,4 @@
-/** Contains fundamental world constants
+/** Contains fundamental and other widely used constants
   *
   * $(DDOC_SECTION_H System of units:) symmetric CGS
   * Origin:  $(LINK2 http://physics.nist.gov/cuu/index.html,
@@ -8,7 +8,7 @@
   *
   */
 
-module scid.constants.cgs.fundamental;
+module scid.constants.cgs.basic;
 
 /// Newtonian constant of gravitation, [cm^3 / (g * s^2)]
 enum double GRAVITY = 6.673_84e-8;
@@ -19,11 +19,11 @@ enum double SPEEDLIGHT = 2.997_924_58e+10;
 
 /// Planck constant [erg * s]
 enum double PLANCK = 6.626_069_57e-27;
-enum double D_PLANCK = 0.000_000_29e-27, /// Standard uncertainty
+enum double D_PLANCK = 0.000_000_29e-27; /// Standard uncertainty
 
 /// Planck constant over 2*pi [erg * s]
-enum double PLANCK_2PI = 1.054_571_726e-27,
-enum double D_PLANCK_2PI = 0.000_000_047e-27 /// Standard uncertainty
+enum double PLANCK_2PI = 1.054_571_726e-27;
+enum double D_PLANCK_2PI = 0.000_000_047e-27; /// Standard uncertainty
 
 /// Elementary charge [statC]
 enum double ECHARGE = 4.803_204_25e-10;
@@ -32,3 +32,11 @@ enum double D_ECHARGE = 0.000_000_10e-10; /// Standard uncertainty
 /// Fine-structure constant
 enum double FINE_STRUCT = 7.297_352_5698e-3;
 enum double D_FINE_STRUCT = 0.000_000_0024e-3; /// Standard uncertainty
+
+/// Avogadro constant
+enum double AVOGADRO = 6.022_141_29e+23;
+enum double D_AVOGADRO = 0.000_000_27e+23; /// Standard uncertainty
+
+/// Boltzman constant [erg]
+enum double BOLTZMAN = 1.380_6488e-16;
+enum double D_BOLTZMAN = 0.000_0013e-16; /// Standard uncertainty
