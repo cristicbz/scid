@@ -10,8 +10,7 @@ version( demo ) {
 	import std.string, std.math;
 	
 	void main() {
-		dMatProdTest();
-		zMatProdTest();
+		testIssue61();
 		readln();
 	}
 	
@@ -49,11 +48,11 @@ version( demo ) {
 		
 		enforce( vecSlice == [4.0, 8.0] );
 	
+		// (functionality disabled for the moment)
 		// One can use array literals as vector literals most of the time:
-		double x = eval( [2.0, -1.0].t * vecSlice );
-		writeln( "Expr 3: [2.0, -1.0].t * ", vecSlice.toString, " = ", x );
-		
-		enforce( x == 0.0 );
+		// double x = eval( [2.0, -1.0].t * vecSlice );
+		// writeln( "Expr 3: [2.0, -1.0].t * ", vecSlice.toString, " = ", x );
+		// enforce( x == 0.0 );
 	}
 	
 	/** Using vectors and matrices and ranges. */
@@ -204,7 +203,7 @@ version( demo ) {
 	
 	/** Enforce the data & dimensions of a matrix. */
 	void enforceMatData( M, E )( auto ref M m, size_t r, size_t c, E[] expected ) {
-		debug {
+		//debug {
 			enum epsilon = 1e-3;
 			enforce( m.rows == r, format("Wrong no. of rows %d vs %d", m.rows, r) );
 			enforce( m.columns == c, format("Wrong no. of rows %d vs %d", m.columns, c ) );
@@ -213,18 +212,18 @@ version( demo ) {
 			foreach( i ; 0 .. a.length ) {
 				enforce( myApproxEqual( a[i], b[i] ),
 				   "Expected " ~ to!string(expected) ~ ", got "~ to!string(a) ~
-					" (" ~ to!string(i) ~ ", " ~ to!string(abs(x)) ~ ")"
+					" (" ~ to!string(i) ~  ")"
 				);
 			}
-		}
+		//}
 	}
 	
 	/** Enforce the data and length of a vector. */
 	void enforceVecData( V, E )( auto ref V v, E[] expected ) {
-		debug {
+		//debug {
 			enforce( v.length == expected.length, format("Wrong vector length: %d vs. %d", v.length, expected.length) );
 			enforce( v.cdata[ 0 .. expected.length ] == to!(BaseElementType!V)(expected) );
-		}
+		//}
 	}
 	
 	/** Enforce that a matrix is myApproxEqual to a built-in matrix. */
@@ -624,4 +623,16 @@ version( demo ) {
 		col[ 0 ] = 200.;
 		enforce( mat[ 0, 0 ] == 1. && row[ 0 ] == 100. );
 	}
+	
+	/** Issue 61 - Transposing eagerly copies */
+	void testIssue61() {
+		auto mat1 = Matrix!double([ [1.,2.], [3., 4.] ]);
+		auto mat2 = eval( mat1.t );
+		Matrix!double mat3;
+		mat3[] = mat2.t;
+		
+		enforce( mat1.cdata == mat2.cdata );
+		enforce( mat2.cdata == mat3.cdata );
+	}
+	
 }

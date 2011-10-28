@@ -102,6 +102,15 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 		leading_ = other.leading_;
 	}
 	
+	/** Create a matrix as a copy of another exisiting one. */
+	this()( Transposed* other ) {
+		data_    = other.data_;
+		ptr_     = other.ptr_;
+		rows_    = other.cols_;
+		cols_    = other.rows_;
+		leading_ = other.leading_;
+	}
+	
 	/** Create a matrix as a slice of an existing one. */
 	this()( CowMatrix* other, size_t rowStart, size_t numRows, size_t colStart, size_t numCols ) {
 		data_    = other.data_;

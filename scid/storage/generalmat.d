@@ -82,9 +82,9 @@ struct BasicGeneralMatrixStorage( ContainerRef_ ) {
 				conatinerRef_ = ContainerRef();
 			else
 				containerRef_ = ContainerRef( source.conatinerRef_.ptr, source.firstIndex, source.rows, source.columns );
-		} else static if( (!tr || !isComplexScalar!ElementType) && srcOrder == storageOrder && is( Source : typeof( this ) ) ) {
+		} else static if( (!tr || !isComplexScalar!ElementType) && ( is( Source : typeof( this ) ) || ( tr && is( Source : Transposed ) ) ) ) {
 			if( source.empty )
-				containerRef_ = ConatinerRef();
+				containerRef_ = ContainerRef();
 			else
 				containerRef_ = ContainerRef( source.containerRef_.ptr );
 		} else {
