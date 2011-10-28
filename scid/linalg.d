@@ -7,11 +7,14 @@ and use their input arguments as scratch space.
 module scid.linalg;
 
 import std.string;
+import std.traits;
 
 import scid.internal.regionallocator;
 import scid.lapack;
 import scid.matrix;
+import scid.vector;
 import scid.common.traits;
+import scid.ops.eval;
 
 /**
 Performs Cholesky decomposition of a Hermitian, positive definite matrix.  
@@ -240,5 +243,134 @@ unittest {
     choleskyDestructive!( MatrixTriangle.Lower )( gen4 );
     foreach( row; 0..3 ) foreach( col; 0..3 ) {
         assert( ch[ row, col ] == gen4[ col, row ]);
+    }
+}
+
+/**
+Solve a positive definite system of equations using Cholesky decomposition.
+Assume the system to be solved is mat * ans = vector.  Either cholesky
+or choleskyDestructive must first be called on mat to obtain 
+decomposedMatrix.  Then choleskySolve can be called with decomposedMatrix
+and vector to obtain ans.  The template parameter tri controls which triangle
+the results of the Cholesky decomposition are expected to be in.  The other
+triangle should contain zeros.
+
+Examples:
+---
+// Make a positive definite matrix.
+auto mat = Matrix!double(
+   [[170, 90, 65],
+    [90, 54, 45],
+    [65, 45, 50]]
+);
+
+choleskyDestructive!( MatrixTriangle.Lower )( mat );
+auto vector = Vector!double( [3, 6, 2] );
+auto ans = choleskySolve!( MatrixTriangle.Lower )( mat, vector );
+---
+*/
+auto choleskySolve( MatrixTriangle tri = MatrixTriangle.Upper, M, V )
+( M decomposedMatrix, V vector ) {
+    alias CommonType!( 
+        typeof( decomposedMatrix[0, 0] ), typeof( vector[0]) ) F;
+        
+    auto ret = Vector!F( vector.length );
+    choleskySolve!( tri, M, V , typeof(ret) )( decomposedMatrix, vector, ret );
+    return ret;
+}
+
+/**
+This overload allows ans to be pre-allocated.  It must have the same length 
+as vector.
+*/
+void choleskySolve( MatrixTriangle tri = MatrixTriangle.Upper, M, V, R )
+( M decomposedMatrix, V vector, ref R ans ) {
+    assert( decomposedMatrix.rows == vector.length, format(
+        "decomposedMatrix.rows must be equal to vector.length for " ~
+        "choleskySolve. (Got %s, %s)", decomposedMatrix.rows, vector.length ) );
+        
+    auto alloc = newRegionAllocator();
+    
+    // Assume a system A * ans = vector where A is some matrix.  A is decomposed
+    // such that A = decomposedMatrix * decomposedMatrix.t.  According to
+    // Wikipedia (http://en.wikipedia.org/wiki/Cholesky_decomposition),
+    // we can solve this sytem by solving decomposedMatrix * y = vector for
+    // y and then solving decomposedMatrix.t * ans = vector for ans. 
+    alias CommonType!( 
+        typeof( decomposedMatrix[0, 0] ), typeof( vector[0]) ) F;
+    auto y = ExternalVectorView!F( vector.length, alloc );
+    auto transposed = eval( decomposedMatrix.t );
+    
+    static if( tri == MatrixTriangle.Lower ) {
+        solveLower( decomposedMatrix, vector, y );
+        solveUpper( transposed, y, ans );
+    } else {
+        static assert( tri == MatrixTriangle.Upper );
+        solveLower( transposed, vector, y );
+        solveUpper( decomposedMatrix, y, ans );  
+    }
+}
+
+unittest {
+    import std.math;
+    import scid.matvec;
+    
+    auto raw = Matrix!double([
+        [8.0, 6, 7],
+        [5.0, 3, 0],
+        [9.0, 3, 1]
+    ]);
+    
+    auto cov = eval( raw.t * raw );
+    auto upper = cov;
+    auto lower = cov;
+    choleskyDestructive( upper );
+    choleskyDestructive!( MatrixTriangle.Lower )( lower );
+    auto b = Vector!double( [3.0, 6, 2] );
+    
+    auto res1 = choleskySolve(upper, b);
+    auto res2 = choleskySolve!( MatrixTriangle.Lower )( lower, b );
+    auto res3 = eval( inv( cov ) * b );
+    
+    assert( approxEqual( res1, res2 ));
+    assert( approxEqual( res3, res2 ));
+}
+
+// Solves a system of linear equations where the matrix is already lower
+// triangular.
+//
+// TODO:  Expose this somewhere in the API instead of just making it private.
+private void solveLower( M, V, R )( M mat, V vec, ref R result ) {
+    assert( result.length == vec.length );
+    assert( mat.rows == vec.length );
+    
+    foreach( i; 0..mat.rows ) {
+        auto ans = vec[i];
+        
+        foreach( j; 0..i ) {
+            ans -= result[j] * mat[i, j];
+        }
+        
+        result[i] = ans / mat[i, i];
+    }
+}
+
+// Ditto
+// Solves a system of linear equations where the matrix is already lower
+// triangular.
+//
+// TODO:  Expose this somewhere in the API instead of just making it private.
+private void solveUpper( M, V, R )( M mat, V vec, ref R result ) {
+    assert( result.length == vec.length );
+    assert( mat.rows == vec.length );
+    
+    for( size_t i = mat.rows - 1; i != size_t.max; i-- ) {
+        auto ans = vec[i];
+        
+        foreach( j; i + 1..mat.rows ) {
+            ans -= result[j] * mat[i, j];
+        }
+        
+        result[i] = ans / mat[i, i];
     }
 }
