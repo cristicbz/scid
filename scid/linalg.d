@@ -356,10 +356,6 @@ private void solveLower( M, V, R )( M mat, V vec, ref R result ) {
 }
 
 // Ditto
-// Solves a system of linear equations where the matrix is already lower
-// triangular.
-//
-// TODO:  Expose this somewhere in the API instead of just making it private.
 private void solveUpper( M, V, R )( M mat, V vec, ref R result ) {
     assert( result.length == vec.length );
     assert( mat.rows == vec.length );
