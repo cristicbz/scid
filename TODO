@@ -1,5 +1,16 @@
-* Refactor storage operations to use Matrix/Vectors, rather than other storages..
-* Change .ptr in container reference types to .addressForNoCopyHack -> hacks should be verbose.
-* Replace swaps with moves in opAssign()-s
-* Implement strided views for PackedSubVector-s
-* Matrix[ i ][ a .. b ] returns slice while Matrix[ a .. b ][ j ] returns view.
+Short-Term
+1. Refactor storage operations to use Matrix/Vectors, rather than other storages..
+2. Change .ptr in container reference types to .addressForNoCopyHack -> hacks should be verbose.
+3. Replace swaps with moves in opAssign()-s
+4. Implement strided views for PackedSubVector-s
+5. Matrix[ i ][ a .. b ] returns slice while Matrix[ a .. b ][ j ] returns view.
+
+Medium Term:
+1. Finish writing up operation specializations for all the types (right now only general matrices call BLAS/LAPACK functions for all their opreations).
+2. Finish writing LAPACK wrapper functions.
+3. Support banded matrices (general, symmetric, and hermitian).
+
+Long term:
+1. Merge with dstats.
+2. Sparse algebra.
+3. Integrate with phobos.
