@@ -1,0 +1,13 @@
+/** Contains fundamental and other widely used constants
+  *
+  * $(DDOC_SECTION_H System of units:) symmetric SI
+  * Origin:  $(LINK2 http://physics.nist.gov/cuu/index.html,
+  *            The NIST Reference on Constants, Units, and Uncertainty)
+  * License: $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
+  * Version: alpha
+  *
+  */
+
+module scid.constants.si.basic;
+
+// TODO
