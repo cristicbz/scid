@@ -180,7 +180,6 @@ struct CowMatrix( ElementType_, StorageOrder storageOrder_ = StorageOrder.Column
 	in {
 		checkBounds_( i, j );
 	} out {
-		assert( index( i, j ) == rhs );
 		assert( data_.refCount() == 1 );
 	} body {
 		unshareData_();
