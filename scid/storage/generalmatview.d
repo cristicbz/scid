@@ -97,8 +97,6 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	void indexAssign( string op = "" )( ElementType rhs, size_t i, size_t j )
 	in {
 		checkBounds_( i, j );
-	} out {
-		assert( index( i, j ) == rhs );
 	} body {
 		mixin( "containerRef_.data[ map_( i, j ) ]" ~ op ~ "= rhs;" );
 	}
