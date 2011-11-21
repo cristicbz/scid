@@ -66,8 +66,6 @@ struct PackedSubMatrixStorage( ContainerRef_, SubMatrixType type_ ) {
 	void indexAssign( string op = "" )( ElementType rhs, size_t i, size_t j )
 	in {
 		checkBounds_( i, j );
-	} out {
-		assert( index( i, j ) == rhs );
 	} body {
 		containerRef_.indexAssign!op( rhs, i + rowStart_, j + colStart_ );
 	}

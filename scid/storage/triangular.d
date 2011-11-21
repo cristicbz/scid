@@ -143,8 +143,6 @@ struct TriangularArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder 
 			assert( i <= j, "Modification of zero element in triangle matrix." );
 		else
 			assert( i >= j, "Modification of zero element in triangle matrix." );
-	}  out {
-		assert( index( i, j ) == rhs );
 	} body {
 		containerRef_.indexAssign!op(rhs, map_( i, j ) );
 	}
