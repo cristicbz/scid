@@ -2,6 +2,7 @@ module scid.demo;
 
 version( demo ) {
 	import scid.matvec;
+	import scid.storage.diagonalmat;
 	import scid.common.traits, scid.common.meta;
 	import scid.internal.regionallocator;
 	
@@ -10,7 +11,12 @@ version( demo ) {
 	import std.string, std.math;
 	
 	void main() {
-		testIssue61();
+		auto x = DiagonalMatrix!double([1.,2,3,4]), y=DiagonalMatrix!double([2.,2.,2.,2.]);
+
+	//	auto w = SymmetricMatrix!double([[1.,2.,3.,4],[1.,2.,3.,4],[1.,2.,3.,4],[1.,2.,3.,4]]);
+		auto z = DiagonalMatrix!double(0);
+		z[] = x + y;
+		writeln(z.pretty);
 		readln();
 	}
 	
@@ -250,7 +256,7 @@ version( demo ) {
 	/** A TypeTuple of all matrix types to be tested by generic tests. */
 	template MatrixTypes( T ) {
 		alias TypeTuple!(
-			Matrix!T,
+			//Matrix!T,
 			//Matrix!(T,StorageOrder.RowMajor),
 			//TriangularMatrix!T,
 			//TriangularMatrix!(T, MatrixTriangle.Lower ),
@@ -259,7 +265,8 @@ version( demo ) {
 			//SymmetricMatrix!T,
 			// SymmetricMatrix!(T, MatrixTriangle.Lower ),
 			// SymmetricMatrix!(T, MatrixTriangle.Upper, StorageOrder.RowMajor),
-			// SymmetricMatrix!(T, MatrixTriangle.Lower, StorageOrder.RowMajor)
+			// SymmetricMatrix!(T, MatrixTriangle.Lower, StorageOrder.RowMajor),
+			DiagonalMatrix!T
 		) MatrixTypes;
 	}
 	

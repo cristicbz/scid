@@ -5,6 +5,8 @@ import scid.common.traits;
 import scid.common.meta;
 import scid.ops.common, scid.ops.expression, scid.ops.eval;
 import scid.storage.cowarray;
+import scid.storage.generalmat;
+import scid.storage.external;
 
 import scid.internal.assertmessages;
 
@@ -35,6 +37,11 @@ struct BasicDiagonalMatrixStorage( ContainerRef_, DiagonalMatrixStorageType type
 	
 	alias BasicDiagonalMatrixStorage!( ContainerRef_, DiagonalMatrixStorageType.View )
 		View;
+
+	alias BasicDiagonalMatrixStorage!( ExternalArray!(ElementType, ArrayTypeOf!ContainerRef), DiagonalMatrixStorageType.Root )
+		Temporary;
+
+	alias typeof(this) Transposed;
 	
 	private enum isRoot  = (type_ == DiagonalMatrixStorageType.Root);
 	private enum isView  = (type_ == DiagonalMatrixStorageType.View);
@@ -88,30 +95,36 @@ struct BasicDiagonalMatrixStorage( ContainerRef_, DiagonalMatrixStorageType type
 	
 	ElementType index( size_t i, size_t j ) const
 	in {
-		assert( i < rows && j < columns, boundsMsg_( i, j ) );
+		checkBounds_( i, j );
 	} body {
 		return i == j ? containerRef_.index( i ) : Zero!ElementType;
 	}
 	
 	void indexAssign( string op = "" )( ElementType rhs, size_t i, size_t j )
 	in {
-		assert( i < rows && j < columns, boundsMsg_( i, j ) );
-		assert( i == j, msgPrefix_ ~ "Assignment to zero element in diagonal matrix." );
+		checkBounds_( i, j );
+		assert( i == j, "Assignment to zero element in diagonal matrix." );
 	} body {
 		containerRef_.indexAssign!op( rhs, i );
 	}
 	
-	Slice slice( size_t rowStart, size_t colStart, size_t rowEnd, size_t colEnd ) {
+	Slice slice( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd )
+	in {
+		checkSliceIndices_( rowStart, rowEnd, colStart, colEnd );
+	} body {
 		return typeof( return )( containerRef_, rowStart, rowEnd - rowStart, colStart, colEnd - colStart );
 	}
 	
-	View view( size_t rowStart, size_t colStart, size_t rowEnd, size_t colEnd ) {
+	View view( size_t rowStart, size_t rowEnd, size_t colStart, size_t colEnd )
+	in {
+		checkSliceIndices_( rowStart, rowEnd, colStart, colEnd );
+	} body {
 		return typeof( return )( containerRef_, rowStart, rowEnd - rowStart, colStart, colEnd - colStart );
 	}
 	
 	RowView row( size_t i )
 	in {
-		assert( i < rows, sliceMsg_( i,	0, i, columns ) );
+		checkSliceIndices_( i, i, 0, columns );
 	} body {
 		if( isRoot || i >= colStart_ )
 			return typeof( return )( containerRef_, i + rowStart_ , i - colStart_, columns );
@@ -121,7 +134,7 @@ struct BasicDiagonalMatrixStorage( ContainerRef_, DiagonalMatrixStorageType type
 	
 	ColumnView column( size_t j )
 	in {
-		assert( j < columns, sliceMsg_( 0, j, rows, j ) );
+		checkSliceIndices_( 0, rows, j, j );
 	} body {
 		if( isRoot || j >= rowStart_ )
 			return typeof( return )( containerRef_, j + colStart_, j - rowStart_, rows );
@@ -129,14 +142,28 @@ struct BasicDiagonalMatrixStorage( ContainerRef_, DiagonalMatrixStorageType type
 			return typeof( return )( rows );
 	}
 	
-	void resize( size_t rows, size_t columns, void * ) {
-		assert( rows == columns );
-		containerRef_.resize( rows, null );
-	}
+	static if( is( typeof( containerRef_.resize( 0 ) ) ) ) {
+		void resize( size_t newRows, size_t newColumns, void * ) {
+			static if( !isView ) {
+				checkSquareDims_!"diagonal"( newRows, newColumns );
+				containerRef_.resize( newRows, null );
+			} else {
+				assert( rows == newRows && columns == newColumns, "Diagonal matrix view cannot be resized." );
+			}
+		}
 	
-	void resize( size_t rows, size_t columns ) {
-		assert( rows == columns );
-		containerRef_.resize( rows );
+		void resize( size_t newRows, size_t newColumns ) {
+			static if( !isView ) {
+				checkSquareDims_!"diagonal"( newRows, newColumns );
+				containerRef_.resize( newRows );
+
+				static if( isSlice ) {
+					
+				}
+			} else {
+				assert( rows == newRows && columns == newColumns, "Diagonal matrix view cannot be resized." );
+			}
+		}
 	}
 	
 	void copy( Transpose tr = Transpose.no, Source )( auto ref Source source  ) if( is( Source : typeof(this))) {
@@ -156,8 +183,7 @@ struct BasicDiagonalMatrixStorage( ContainerRef_, DiagonalMatrixStorageType type
 	}
 	
 	void copyRight( Transpose tr = Transpose.no, Dest )( auto ref Dest dest ) {
-		assert( dest.rows == rows_ && dest.columns == columns_,
-		        dimMismatch_( dest.rows, dest.columns, "assignment" ) );
+		checkAssignDims_( dest.rows, dest.columns );
 		auto start = max( rowStart_, colStart_ );
 		auto end   = min( rows_, cols_ );
 		foreach( i ; start .. end ) {
@@ -185,8 +211,7 @@ struct BasicDiagonalMatrixStorage( ContainerRef_, DiagonalMatrixStorageType type
 	}
 	
 	void scaledAdditionRight( Transpose tr = Transpose.no, Source )( ElementType alpha, auto ref Source source ) {
-		assert( dest.rows == rows_ && dest.columns == columns_,
-		        dimMismatch_( dest.rows, dest.columns, "assignment" ) );
+		checkAssignDims_( dest.rows, dest.columns );
 		auto start = max( rowStart_, colStart_ );
 		auto end   = min( rows_, cols_ );
 		foreach( i ; start .. end ) {
@@ -199,6 +224,7 @@ struct BasicDiagonalMatrixStorage( ContainerRef_, DiagonalMatrixStorageType type
 	
 	void matrixProduct( Transpose transA = Transpose.no, Transpose transB = Transpose.no, A,B )
 			( ElementType alpha, auto ref A a, auto ref B b, ElementType beta ) {
+		
 		auto start = max( rowStart_, colStart_ );
 		auto end   = min( rows_, cols_ );
 		auto d     = containerRef_.data[ start .. end ];
@@ -207,29 +233,51 @@ struct BasicDiagonalMatrixStorage( ContainerRef_, DiagonalMatrixStorageType type
 		auto n = transB ? b.rows : b.columns;
 		
 		if( !alpha ) {
-			if( !beta ) resize( m, n );
-			else {
-				assert( rows == m && columns == n );
-				blas.scal( d.length, Zero!ElementType, d.ptr, 1 );
+			if( !beta ) {
+				resize( m, n );
+			} else {
+				assert( rows == m && columns == n, "Matrix dimensions mismatch in diagonal matrix product." );
+				blas.scal( d.length, beta, d.ptr, 1 );
 			}
 			
 			return;
 		}
 		
+
 		//static if( is( A : typeof( this ) ) && is( B : typeof( this ) ) ) {
 		//    blas.sbmv( 'u', d.length, 0, alpha, a.cdata, 1, b.cdata, 1, beta, d.ptr, 1 );
 		//} else {
 			if( beta ) {	
 				foreach( i, ref destElem ; d ) {
+					assert( rows == m && columns == n, "Matrix dimensions mismatch in diagonal matrix product." );
 					destElem *= beta;
 					destElem += alpha * rowColumnDot!( transA, transB )( a, i, b, i );
 				}
 			} else {
+				import std.stdio; writeln("asdf");
+				resize( m, n, null );
+				// get d again, resize will change the ptr
+
+				start = max( rowStart_, colStart_ );
+				end   = min( rows_, cols_ );
+				d     = containerRef_.data[ start .. end ];
+
 				foreach( i, ref destElem ; d ) {
 					destElem = alpha * rowColumnDot!( transA, transB )( a, i, b, i );
 				}
 			}
 		//}
+	}
+
+	/** Promotions for this type are inherited either from its container or from general matrix. */
+	template Promote( Other ) {
+		static if( isRoot && is( Other : typeof(this) ) ) {
+			alias typeof(this) Promote;
+		} else static if( isScalar!Other ) {
+			alias BasicDiagonalMatrixStorage!( Promotion!(Other,ContainerRef) ) Promote;
+		} else {
+			alias Promotion!( GeneralMatrixStorage!ElementType, Other ) Promote;
+		}
 	}
 	
 	@property {
@@ -246,7 +294,7 @@ struct BasicDiagonalMatrixStorage( ContainerRef_, DiagonalMatrixStorageType type
 	}
 	
 private:
-	mixin MatrixErrorMessages;
+	mixin MatrixChecks;
 	
 	static if( !isRoot ) {
 		size_t rowStart_, rows_;
@@ -299,7 +347,7 @@ struct DiagonalMatrixSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	
 	ElementType index( size_t i ) const
 	in {
-		assert( i < length_, boundsMsg_( i ) );
+		checkBounds_( i );
 	} body {
 		if( i == fakeIndex_ )
 			return containerRef_.index( realIndex_ );
@@ -309,8 +357,8 @@ struct DiagonalMatrixSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	
 	void indexAssign( string op = "" )( ElementType rhs, size_t i )
 	in {
-		assert( i < length_, boundsMsg_( i ) );
-		assert( i == fakeIndex_, msgPrefix_ ~ "Assignment to zero element in diagonal matrix." );
+		checkBounds_( i );
+		assert( i == fakeIndex_, "Assignment to zero element in diagonal matrix." );
 	} body {
 		containerRef_.indexAssign!op( rhs, realIndex_ );	
 	}
@@ -332,7 +380,7 @@ struct DiagonalMatrixSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	
 	void popFront()
 	in {
-		assert( !empty, emptyMsg_("popFront()") );
+		checkNotEmpty_!"popFront()"();
 	} body {
 		if( fakeIndex_ > 0 )
 			-- fakeIndex_;
@@ -343,23 +391,23 @@ struct DiagonalMatrixSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	
 	void popBack()
 	in {
-		assert( !empty, emptyMsg_("popBack()") );
+		checkNotEmpty_!"popBack()"();
 	} body {
 		-- length_;
 	}
 	
 	void copy( Transpose tr = Transpose.no, Source )( auto ref Source source ) {
-		assert( source.length == length_, lengthMismatch_( source.length, "assignment" ) );
+		checkAssignLength_( source.length );
 		nonZeroAssign_!tr( source.index( fakeIndex_ ), realIndex_ );
 	}
 	
 	void scaledAddition( Transpose tr = Transpose.no, Source )( ElementType alpha, auto ref Source source ) {
-		assert( source.length == length_, lengthMismatch_( source.length, "scaled addition" ) );
+		checkAssignLength_( source.length );
 		nonZeroScaledAddition_!tr( alpha, source.index( fakeIndex_ ) );
 	}
 	
 	ElementType dot( Transpose tr = Transpose.no, Right )( auto ref Right right ) {
-		assert( right.length == length_, lengthMismatch_( right.length, "dot product" ) );
+		assert( right.length == length_, "Length mismatch in dot product." );
 		if( hasNonZero_() )
 			return right.index( fakeIndex_ ) * nonZero_!tr();
 		else
@@ -367,14 +415,14 @@ struct DiagonalMatrixSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	}
 	
 	void copyRight( Transpose tr = Transpose.no, Dest )( auto ref Dest dest ) {
-		assert( dest.length == length_, lengthMismatch_( dest.length, "assignment" ) );
+		checkAssignLength_( source.length );
 		evalScaling( Zero!ElementType, dest );
 		if( hasNonZero_() )
 			dest.indexAssign( nonZero_!tr(), fakeIndex_ );
 	}
 	
 	void scaledAdditionRight( Transpose tr = Transpose.no, Dest )( ElementType alpha, auto ref Dest dest ) {
-		assert( dest.length == length_, lengthMismatch_( dest.length, "scaled addition" ) );
+		checkAssignLength_( source.length );
 		if( hasNonZero_() )
 			dest.indexAssign!"+"( alpha * nonZero_!tr(), fakeIndex_ );
 	}
@@ -390,7 +438,7 @@ struct DiagonalMatrixSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 	}
 	
 private:
-	mixin ArrayErrorMessages;
+	mixin ArrayChecks;
 
 	bool hasNonZero_() const {
 		return fakeIndex_ < length_;

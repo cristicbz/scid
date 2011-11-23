@@ -324,8 +324,7 @@ struct BasicVector( Storage_ ) {
 		static if( isResizable ) {
 			storage.resize( newLength, null );
 		} else {
-			assert( length == newLength,
-				lengthMismatch_( newLength ) );
+			assert( length == newLength );
 		}
 	}
 	

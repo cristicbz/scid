@@ -9,7 +9,7 @@
   <oneobj>0</oneobj>
   <trace>0</trace>
   <quiet>0</quiet>
-  <verbose>1</verbose>
+  <verbose>0</verbose>
   <vtls>0</vtls>
   <symdebug>0</symdebug>
   <optimize>0</optimize>
@@ -451,12 +451,6 @@
   <filesToClean>*.obj;*.cmd;*.build;*.json;*.dep</filesToClean>
  </Config>
  <Folder name="scid">
-  <Folder name="ops">
-   <File path="ops\expression.d" />
-   <File path="ops\fallback.d" />
-   <File path="ops\eval.d" />
-   <File path="ops\common.d" />
-  </Folder>
   <Folder name="bindings">
    <Folder name="blas">
     <File path="bindings\blas\blas.d" />
@@ -472,20 +466,29 @@
    <File path="common\fortran.d" />
    <File path="common\memory.d" />
    <File path="common\meta.d" />
+   <File path="common\storagetraits.d" />
    <File path="common\testing.d" />
    <File path="common\traits.d" />
-   <File path="common\storagetraits.d" />
   </Folder>
   <Folder name="internal">
-   <File path="internal\regionallocator.d" />
    <File path="internal\assertmessages.d" />
+   <File path="internal\regionallocator.d" />
+  </Folder>
+  <Folder name="ops">
+   <File path="ops\common.d" />
+   <File path="ops\eval.d" />
+   <File path="ops\expression.d" />
+   <File path="ops\fallback.d" />
   </Folder>
   <Folder name="storage">
    <File path="storage\array.d" />
    <File path="storage\arraydata.d" />
    <File path="storage\arrayview.d" />
+   <File path="storage\constant.d" />
    <File path="storage\cowarray.d" />
    <File path="storage\cowmatrix.d" />
+   <File path="storage\diagonalmat.d" />
+   <File path="storage\external.d" />
    <File path="storage\generalmat.d" />
    <File path="storage\generalmatview.d" />
    <File path="storage\packedmat.d" />
@@ -493,20 +496,17 @@
    <File path="storage\packedsubvec.d" />
    <File path="storage\symmetric.d" />
    <File path="storage\triangular.d" />
-   <File path="storage\external.d" />
-   <File path="storage\diagonalmat.d" />
    <File path="storage\triangularview.d" />
-   <File path="storage\constant.d" />
   </Folder>
+  <File path="blas.d" />
+  <File path="demo.d" />
   <File path="exception.d" />
+  <File path="lapack.d" />
+  <File path="matrix.d" />
+  <File path="matvec.d" />
+  <File path="storages.d" />
   <File path="types.d" />
   <File path="util.d" />
   <File path="vector.d" />
-  <File path="matrix.d" />
-  <File path="matvec.d" />
-  <File path="demo.d" />
-  <File path="storages.d" />
-  <File path="blas.d" />
-  <File path="lapack.d" />
  </Folder>
 </DProject>

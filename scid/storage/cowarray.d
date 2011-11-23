@@ -90,7 +90,6 @@ struct CowArray( ElementType_ ) {
 	in {
 		checkBounds_( i );
 	} out {
-		assert( index( i ) == rhs );
 		assert( data_.refCount() == 1 );
 	} body {
 		unshareData_();
