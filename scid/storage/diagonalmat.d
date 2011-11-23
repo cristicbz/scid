@@ -7,6 +7,7 @@ import scid.ops.common, scid.ops.expression, scid.ops.eval;
 import scid.storage.cowarray;
 import scid.storage.generalmat;
 import scid.storage.external;
+import scid.storage.array;
 
 import scid.internal.assertmessages;
 
@@ -254,10 +255,9 @@ struct BasicDiagonalMatrixStorage( ContainerRef_, DiagonalMatrixStorageType type
 					destElem += alpha * rowColumnDot!( transA, transB )( a, i, b, i );
 				}
 			} else {
-				import std.stdio; writeln("asdf");
 				resize( m, n, null );
-				// get d again, resize will change the ptr
 
+				// get d again, resize will change the ptr
 				start = max( rowStart_, colStart_ );
 				end   = min( rows_, cols_ );
 				d     = containerRef_.data[ start .. end ];
@@ -425,6 +425,11 @@ struct DiagonalMatrixSubVectorStorage( ContainerRef_, VectorType vtype_ ) {
 		checkAssignLength_( source.length );
 		if( hasNonZero_() )
 			dest.indexAssign!"+"( alpha * nonZero_!tr(), fakeIndex_ );
+	}
+
+	/** Promotions for this type are inherited from ArrayStorage */
+	template Promote( Other ) {
+		alias Promotion!( BasicArrayStorage!(ArrayTypeOf!ContainerRef, vectorType), Other ) Promote;
 	}
 	
 	@property {

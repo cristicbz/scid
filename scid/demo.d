@@ -14,9 +14,8 @@ version( demo ) {
 		auto x = DiagonalMatrix!double([1.,2,3,4]), y=DiagonalMatrix!double([2.,2.,2.,2.]);
 
 	//	auto w = SymmetricMatrix!double([[1.,2.,3.,4],[1.,2.,3.,4],[1.,2.,3.,4],[1.,2.,3.,4]]);
-		auto z = DiagonalMatrix!double(0);
-		z[] = x + y;
-		writeln(z.pretty);
+		eval( x[0..2][] * y[][0..2] );
+		//writeln(z.pretty);
 		readln();
 	}
 	
