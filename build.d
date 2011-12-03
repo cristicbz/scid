@@ -24,7 +24,7 @@
     ---
 */
 import std.algorithm, std.array, std.exception, std.file, std.path, std.process,
-    std.stdio, std.string, std.zip;
+    std.stdio, std.string, std.zip, std.getopt;
 
 
 
@@ -41,16 +41,12 @@ version (Posix)
     immutable libDir    = "generated";          // Location of lib file
     immutable headerDir = "generated/headers";  // Location of .di files
     immutable htmlDir   = "generated/html";     // Location of .html files
-    immutable libBLAS   = "/usr/lib/libblas/libblas.a"; // BLAS library
-    immutable libLAPACK = "/usr/lib/lapack/liblapack.a"; // LAPACK library
 }
 version (Windows)
 {
     immutable libDir    = r"generated";
     immutable headerDir = r"generated\headers";
     immutable htmlDir   = r"generated\html";
-    immutable libBLAS   = "";
-    immutable libLAPACK = "deps\\blaslapackdll.lib";
 }
 
 
@@ -65,15 +61,32 @@ int main(string[] args)
 in { assert (args.length > 0); }
 body
 {
+    string libBLAS, libLAPACK;
+    string compilerName = "dmd";
+    getopt(args, config.passThrough, 
+        "blas", &libBLAS, 
+        "lapack", &libLAPACK,
+        "compiler", &compilerName
+    );
+    
+    if(args.length < 2) {
+        printUsage();
+        return -1;
+    }
+    
     try
     {
-        if (args.length == 1)           { buildLib(); buildHeaders(); }
-        else if (args[1] == "lib")      buildLib();
-        else if (args[1] == "demo")     buildDemo();
+        immutable flags = (args.length > 2) ? (join(args[2..$], " ")) : "";
+        
+        if (args[1] == "lib")           buildLib(compilerName, flags, libBLAS, libLAPACK);
+        else if (args[1] == "demo")     buildDemo(compilerName, flags, libBLAS, libLAPACK);
         else if (args[1] == "headers")  buildHeaders();
         else if (args[1] == "html")     buildHTML();
         else if (args[1] == "clean")    buildClean();
-        else enforce(false, "Unknown command: " ~ args[1]);
+        else {
+            printUsage();
+        }
+        
         return 0;
     }
     catch (Exception e)
@@ -86,7 +99,7 @@ body
 
 
 /** Build the library file. */
-void buildLib()
+void buildLib(string compiler, string flags, string libBLAS, string libLAPACK)
 {
     ensureDir(libDir);
     auto sources = getSources();
@@ -94,23 +107,25 @@ void buildLib()
     version (Posix)     immutable libFile = "lib"~libName;
     version (Windows)   immutable libFile = libName;
 
-    immutable buildCmd = "dmd -g -debug -lib "
-        ~libBLAS~" "~libLAPACK~" "
-        ~std.string.join(sources, " ")
+    auto buildCmd = compiler ~ " -lib " ~ flags;
+    if(libBLAS.length) buildCmd ~= " " ~ libBLAS;
+    if(libLAPACK.length) buildCmd ~= " " ~ libLAPACK;
+    buildCmd ~= " " ~ std.string.join(sources, " ")
         ~" -od"~libDir~" -of"~libFile;
     writeln(buildCmd);
     enforce(system(buildCmd) == 0, "Error building library");
 }
 
 /** Build the demo file. */
-void buildDemo()
+void buildDemo(string compiler, string flags, string libBLAS, string libLAPACK)
 {
     ensureDir(libDir);
     auto sources = getSources();
 
-    immutable buildCmd = "dmd -v -g -debug -version=demo "
-        ~libBLAS~" "~libLAPACK~" "
-        ~ std.string.join(sources, " ")
+    auto buildCmd = compiler ~ " -version=demo " ~ flags;
+    if(libBLAS.length) buildCmd ~= " " ~ libBLAS;
+    if(libLAPACK.length) buildCmd ~= " " ~ libLAPACK;
+    buildCmd ~= " " ~ std.string.join(sources, " ")
         ~" -od"~libDir~" -ofdemo";
     writeln(buildCmd);
     enforce(system(buildCmd) == 0, "Error building demo");
@@ -206,7 +221,7 @@ string[] getSources()
     if (sources == null)
     {
         foreach (string f; dirEntries(srcDir, SpanMode.depth))
-            if (isfile(f) && getExt(f) == "d") sources ~= f;
+            if (isFile(f) && getExt(f) == "d") sources ~= f;
     }
     return sources;
 }
@@ -231,4 +246,39 @@ void unzip(string zipFile, string toDir)
         ensureDir(dirname(f));
         std.file.write(f, zip.expand(member));
     }
+}
+
+void printUsage() {
+    enum usage = 
+"Build tool for SciD.
+Usage:  build target [options...] [compiler flags...]
+
+Targets:
+    lib     = The SciD library
+    demo    = The included demo/test program.
+    headers = .di files for SciD.
+    html    = The SciD documentation.
+    clean   = Remove all files from previous build attempts.
+
+Options:
+    --compiler = The name of the compiler command (default = dmd).  If 
+                 another compiler (e.g. GDC or LDC) is used, then the 
+                 adapter script (gdmd or ldmd2) should be provided to this
+                 command so that a DMD-style argument syntax is accepted.
+    
+    --blas     = A BLAS library file to be included in the generated library.
+                 If none is provided, then a BLAS library will need to be
+                 explicitly provided when building a SciD application.
+                 
+    --lapack   = A LAPACK library file to be included in the generated library.
+                 If none is provided, then a LAPACK library will need to be
+                 explicitly provided when building a SciD application.
+                 
+All other command line arguments are interpreted as compiler flags.
+Example:
+    
+./build lib --compiler gdmd --blas /usr/lib/libblas.a 
+  --lapack /usr/lib/liblapack.a -m64 -O -inline -release";
+
+    writeln(usage);
 }
