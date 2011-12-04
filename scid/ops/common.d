@@ -11,6 +11,7 @@ public import scid.ops.eval;
 
 import std.complex;
 import std.math;
+import std.traits;
 import scid.ops.expression;
 import scid.vector;
 import scid.matrix;
@@ -461,4 +462,44 @@ void generalMatrixScaledAddition( Transpose tr, S, D, E )( T alpha, auto ref S s
 			}
 		}
 	}
+}
+
+/**
+This function takes a vector and returns an ExternalMatrixView of
+the vector.  The purpose of this is to support things like vector-matrix
+multiplication by treating the vector on the LHS as a matrix.  It hacks
+around the ref counting system because it's only supposed to be used
+internally for evaluating e.g. vector-matrix multiplication.
+
+If V is already a matrix and not a vector, this is a no-op.
+*/
+auto toMatrix( V )( V vec ) {
+    alias ExternalMatrixView!( typeof( vec[0] ) ) Ret;
+    immutable n = vec.length;
+    auto ptr = cast(Unqual!(typeof(*vec.cdata))*) vec.cdata;
+
+    static if( closureOf!V == Closure.ColumnVector ) {
+        return Ret( 1, ptr[0..n] );
+    } else {
+        return Ret( n, ptr[0..n] );
+    }
+}
+
+unittest {
+    auto col = Vector!double([1, 2, 3]);
+    auto row = eval(col.t);
+    
+    auto colMat = toMatrix(col);
+    auto rowMat = toMatrix(row);
+    
+    assert(colMat[0, 0] == 1);
+    assert(colMat[1, 0] == 2);
+    assert(colMat[2, 0] == 3);
+    
+    assert(rowMat[0, 0] == 1);
+    assert(rowMat[0, 1] == 2);
+    assert(rowMat[0, 2] == 3);
+    
+    assert(colMat.cdata is rowMat.cdata);
+    assert(rowMat.cdata is col.cdata);
 }
