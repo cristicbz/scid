@@ -8,6 +8,7 @@
 module scid.ops.expression;
 
 import scid.common.traits, scid.common.meta;
+import scid.matrix : ExternalMatrixView;
 import std.traits, std.range;
 import std.conv;
 import std.typecons;
@@ -23,6 +24,8 @@ enum Operation {
 	MatScalProd,  // Matrix = Matrix * Scalar
 	MatInverse,   // Matrix = Matrix ^^ (-1)
 	MatTrans,     // Matrix = Matrix.t
+	ToMatrix,     // Convert vector to matrix for ColumnVector * RowVector
+	              // or ColumnVector * Matrix.
 	
 	RowRowSum,    // RowVector = RowVector + RowVector
 	RowScalProd,  // RowVector = RowVector * Scalar
@@ -49,6 +52,33 @@ enum Closure {
 	ColumnVector,
 	Scalar
 }
+
+// This gives a small compile time boost when checking the closure of a given operation.
+private enum operationClosures = [
+	Closure.Matrix,           // MatMatSum,
+	Closure.Matrix,           // MatMatProd,
+	Closure.Matrix,			  // MatScalProd,
+	Closure.Matrix,			  // MatInverse,
+	Closure.Matrix,			  // MatTrans,
+	Closure.Matrix,           // ToMatrix,
+							  
+	Closure.RowVector,		  // RowRowSum,
+	Closure.RowVector,		  // RowScalProd,
+	Closure.RowVector,		  // RowMatProd,
+	Closure.RowVector,		  // ColTrans,
+							  	 	
+	Closure.ColumnVector,	  // ColColSum,
+	Closure.ColumnVector,	  // ColScalProd,
+	Closure.ColumnVector,	  // MatColProd,
+	Closure.ColumnVector,	  // RowTrans,
+							  
+	Closure.Scalar,			  // DotProd,
+	Closure.Scalar,			  // ScalScalSum,
+	Closure.Scalar,			  // ScalScalSub,
+	Closure.Scalar,           // ScalScalProd,
+	Closure.Scalar,           // ScalScalDiv,
+	Closure.Scalar            // ScalScalPow,
+];
 
 /** Convinience function to create an expression object. */
 Expression!( op, Unqual!Lhs, Unqual!Rhs ) expression( string op, Lhs, Rhs )( auto ref Lhs lhs, auto ref Rhs rhs ) {
@@ -129,6 +159,9 @@ struct Expression( string op_, Lhs_, Rhs_ = void ) {
 		size_t rows() const @property {
 			static if( operation == Operation.MatTrans )
 				return lhs_.columns;
+            else static if( operation == Operation.ToMatrix )
+                return ( closureOf!Lhs == Closure.ColumnVector ) ?
+                       ( lhs_.length ) : 1;
 			else
 				return lhs_.rows;
 		}
@@ -139,6 +172,9 @@ struct Expression( string op_, Lhs_, Rhs_ = void ) {
 				return lhs_.rows;
 			else static if( operation == Operation.MatMatProd )
 				return rhs_.columns;
+            else static if( operation == Operation.ToMatrix )
+                return ( closureOf!Lhs == Closure.RowVector ) ?
+                    ( lhs_.length ) : 1;
 			else
 				return lhs_.columns;
 		}
@@ -209,7 +245,25 @@ template Operand( Closure closure_ ) {
 		}
 	
 		auto opBinary( string op, NewRhs )( auto ref NewRhs newRhs ) if( op == "*" ) {
-			return expression!op( this, newRhs );
+		    // If we're multiplying a column vector by a row vector or a matrix,
+		    // rewrite the expression as matrix-matrix multiplication.
+		    static if( this.closure == Closure.ColumnVector ) {
+		        static assert( closureOf!NewRhs != Closure.ColumnVector, 
+                    "Invalid multiplication between ColumnVector and ColumnVector." );
+                    
+		        auto thisConverted = expression!"toMatrix"( this );
+		        		        
+		        static if( closureOf!NewRhs == Closure.RowVector ) {
+		            auto rhsConverted = expression!"toMatrix"( newRhs );
+		        } else {
+		            alias newRhs rhsConverted; 		            
+		        }		        
+		    } else {
+		        alias this thisConverted;
+		        alias newRhs rhsConverted;
+		    }
+		    
+			return expression!op( thisConverted, rhsConverted );
 		}
 		
 		auto opBinaryRight( string op, E )( E newLhs ) if( isConvertible!(E,ElementType) && op == "*" ) {
@@ -247,7 +301,10 @@ template ExpressionResult( E ) {
 	} else static if( E.closure == Closure.Scalar ) {
 		// if the node results in a scalar then the result is of the same type as the element type
 		alias E.ElementType ExpressionResult;
-	} else static if( isTransposition!(E.operation) ) {
+	} else static if( E.operation == Operation.ToMatrix ) {
+	    // ToMatrix converts a vector to an ExternalMatrixView.
+	    alias ExternalMatrixView!( E.Lhs.ElementType ) ExpressionResult;
+    } else static if( isTransposition!(E.operation) ) {
 		// if the node is a transposition then the result is the Transposed of the child node
 		alias ExpressionResult!(E.Lhs).Transposed ExpressionResult;
 	} else static if( E.isBinary ) {
@@ -346,34 +403,6 @@ private template PromotionImpl( A, B ) {
 	}
 }
 
-
-// This gives a small compile time boost when checking the closure of a given operation.
-private enum operationClosures = [
-	Closure.Matrix,           // MatMatSum,
-	Closure.Matrix,           // MatMatProd,
-	Closure.Matrix,			  // MatScalProd,
-	Closure.Matrix,			  // MatInverse,
-	Closure.Matrix,			  // MatTrans,
-							  
-	Closure.RowVector,		  // RowRowSum,
-	Closure.RowVector,		  // RowScalProd,
-	Closure.RowVector,		  // RowMatProd,
-	Closure.RowVector,		  // ColTrans,
-							  	 	
-	Closure.ColumnVector,	  // ColColSum,
-	Closure.ColumnVector,	  // ColScalProd,
-	Closure.ColumnVector,	  // MatColProd,
-	Closure.ColumnVector,	  // RowTrans,
-							  
-	Closure.Scalar,			  // DotProd,
-	Closure.Scalar,			  // ScalScalSum,
-	Closure.Scalar,			  // ScalScalSub,
-	Closure.Scalar,           // ScalScalProd,
-	Closure.Scalar,           // ScalScalDiv,
-	Closure.Scalar            // ScalScalPow,
-];
-
-
 // Find the operation type given the operator and the closure types of the operands
 private template operationOf( string op, Closure l, Closure r ) if( op == "*" ) {
 	
@@ -431,4 +460,10 @@ private template operationOf( string op, Closure l, Closure r ) if( op == "-" ) 
 private template operationOf( string op, Closure l ) if( op == "inv" ) {
 	static if( l == Closure.Matrix )  { enum operationOf = Operation.MatInverse;  }
 	else static assert( false, "Invalid inversion of " ~ to!string(l) );
+}
+
+private template operationOf( string op, Closure l ) if( op == "toMatrix" ) {
+         static if( l == Closure.RowVector    ) { enum operationOf = Operation.ToMatrix; }
+    else static if( l == Closure.ColumnVector ) { enum operationOf = Operation.ToMatrix; }
+    else static assert( false, "Can only convert vectors to matrices." );
 }
