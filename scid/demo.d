@@ -2,6 +2,7 @@ module scid.demo;
 
 version( demo ) {
 	import scid.matvec;
+	import scid.storage.diagonalmat;
 	import scid.common.traits, scid.common.meta;
 	import scid.internal.regionallocator;
 	
@@ -10,7 +11,11 @@ version( demo ) {
 	import std.string, std.math;
 	
 	void main() {
-		testIssue61();
+        auto x = DiagonalMatrix!double([1.,2,3,4]), y=DiagonalMatrix!double([2.,2.,2.,2.]);
+        //  auto w = SymmetricMatrix!double([[1.,2.,3.,4],[1.,2.,3.,4],[1.,2.,3.,4],[1.,2.,3.,4]]);
+        eval( x[0..2][] * y[][0..2] );
+        //writeln(z.pretty);
+
 		testIssue51();
 		readln();
 	}
