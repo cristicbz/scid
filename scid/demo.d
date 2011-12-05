@@ -11,11 +11,12 @@ version( demo ) {
 	import std.string, std.math;
 	
 	void main() {
-		auto x = DiagonalMatrix!double([1.,2,3,4]), y=DiagonalMatrix!double([2.,2.,2.,2.]);
+        auto x = DiagonalMatrix!double([1.,2,3,4]), y=DiagonalMatrix!double([2.,2.,2.,2.]);
+        //  auto w = SymmetricMatrix!double([[1.,2.,3.,4],[1.,2.,3.,4],[1.,2.,3.,4],[1.,2.,3.,4]]);
+        eval( x[0..2][] * y[][0..2] );
+        //writeln(z.pretty);
 
-	//	auto w = SymmetricMatrix!double([[1.,2.,3.,4],[1.,2.,3.,4],[1.,2.,3.,4],[1.,2.,3.,4]]);
-		eval( x[0..2][] * y[][0..2] );
-		//writeln(z.pretty);
+		testIssue51();
 		readln();
 	}
 	
@@ -557,6 +558,29 @@ version( demo ) {
 		// Scalar expression
 		double invdot = eval( inv( externalVectorView!(VectorType.Row)( [1.,2.] ) * externalVectorView( [4.,8.] ) ) );
 		enforce( invdot == 0.05 );
+	}
+	
+	/** Issue 51 - Invalid multiplication between ColumnVector and Matrix */
+	void testIssue51()() {
+	    // Testing row vectors, too.
+	    auto col = vector( [1.0, 2, 3] );
+	    auto row = vector( [4.0, 5, 6] );
+	    auto mat = matrix( [[4.0, 5, 6]] );
+	    
+	    auto rowRes = eval( col * row.t );
+	    auto matRes = eval( col * mat );
+	    
+	    foreach( res; [rowRes, matRes] ) {
+	        assert(	res[0, 0] == 4 );
+	        assert(	res[0, 1] == 5 );
+	        assert(	res[0, 2] == 6 );
+	        assert(	res[1, 0] == 8 );
+	        assert(	res[1, 1] == 10 );
+	        assert(	res[1, 2] == 12 );
+	        assert(	res[2, 0] == 12 );
+	        assert(	res[2, 1] == 15 );
+	        assert(	res[2, 2] == 18 );
+	    }
 	}
 	
 	/** Issue 50 - Matrix slice-slice-assign ends up transposed	*/

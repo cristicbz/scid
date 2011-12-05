@@ -67,11 +67,20 @@ auto eval(string op_, Lhs, Rhs)( auto ref Expression!(op_, Lhs, Rhs) expr )
 }
 
 /** Evaluate a matrix or vector expression. */
-ExpressionResult!E eval( E )( auto ref E expr ) if( isExpression!E && E.closure != Closure.Scalar ) {
+ExpressionResult!E eval( E )( auto ref E expr ) 
+if( isExpression!E && E.closure != Closure.Scalar && E.operation != Operation.ToMatrix ) {
 	// ExpressionResult gives you the type required to save the result of an expression.
 	typeof(return) result;
 	evalCopy( expr, result );
 	return result;
+}
+
+/** 
+Convert a vector expression to a matrix.
+*/
+ExpressionResult!E eval( E )( auto ref E expr ) 
+if( isExpression!E && E.operation == Operation.ToMatrix ) {
+    return toMatrix( eval( expr.lhs_ ) );
 }
 
 /** Evaluate a matrix or vector expression in memory allocated with the specified allocator. */
@@ -201,7 +210,9 @@ void evalCopy( Transpose tr = Transpose.no, Source, Dest )( auto ref Source sour
 			evalMatrixVectorProduct!( Transpose.no, Transpose.no )( One!T, source.lhs, source.rhs, Zero!T, dest );
 		} else static if( op == Operation.MatInverse ) {
 			evalInverse!tr( One!T, source.lhs, Zero!T, dest );
-		} else { 
+		} else static if( op == Operation.ToMatrix ) {
+		    evalCopy!tr( eval( source ), dest );
+        } else { 
 			// can't solve the expression - use a temporary by calling eval
 			RegionAllocator alloc = newRegionAllocator();
 			evalCopy!tr( eval(source, alloc), dest );
