@@ -247,7 +247,9 @@ template Operand( Closure closure_ ) {
 		auto opBinary( string op, NewRhs )( auto ref NewRhs newRhs ) if( op == "*" ) {
 		    // If we're multiplying a column vector by a row vector or a matrix,
 		    // rewrite the expression as matrix-matrix multiplication.
-		    static if( this.closure == Closure.ColumnVector ) {
+		    static if( 0 && this.closure == Closure.ColumnVector &&
+                closureOf!NewRhs != Closure.Scalar
+            ) {
 		        static assert( closureOf!NewRhs != Closure.ColumnVector, 
                     "Invalid multiplication between ColumnVector and ColumnVector." );
                     
