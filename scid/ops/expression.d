@@ -260,13 +260,12 @@ template Operand( Closure closure_ ) {
 		        } else {
 		            alias newRhs rhsConverted; 		            
 		        }		        
+		        
+		        return expression!op( this, newRhs );
 		    } else {
-		        alias this thisConverted;
-		        alias newRhs rhsConverted;
+		        return expression!op( this, newRhs );
 		    }
-		    
-			return expression!op( thisConverted, rhsConverted );
-		}
+        }
 		
 		auto opBinaryRight( string op, E )( E newLhs ) if( isConvertible!(E,ElementType) && op == "*" ) {
 			return expression!op( this, newLhs );
