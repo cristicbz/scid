@@ -49,11 +49,11 @@ template isVector( T ) {
     be ref-counted as well.
 */
 template TransposedOf( T ) {
-	static if( is( T.Transposed ) )
-		alias T.Transposed TransposedOf;
-	else static if( is( T E : RefCounted!(E,x), uint x ) ) {
+    static if( is( T E : RefCounted!(E,x), uint x ) ) 
 		alias RefCounted!(TransposedOf!E,cast(RefCountedAutoInitialize)x) TransposedOf;
-	} else static assert( false, T.stringof ~ " has no transpose." );
+	else static if( is( T.Transposed ) )
+		alias T.Transposed TransposedOf;	
+	else static assert( false, T.stringof ~ " has no transpose." );
 }
 
 template isConvertible( S, T ) {
