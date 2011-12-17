@@ -8,6 +8,7 @@ module scid.linalg;
 
 import std.algorithm : min;
 import std.conv;
+import std.exception;
 import std.string;
 import std.traits;
 
@@ -485,6 +486,7 @@ if( isMatrix!Matrix && Matrix.storageOrder == StorageOrder.ColumnMajor ) {
         ret.u.leading, ret.vt.data, ret.vt.leading, work, lwork, info
     );
     
+    enforce(info == 0, "Lapack error in computing SVD:  " ~ to!string(info));    
     return ret;
 }
 
