@@ -6,6 +6,8 @@ and use their input arguments as scratch space.
 */
 module scid.linalg;
 
+import std.algorithm : min;
+import std.conv;
 import std.string;
 import std.traits;
 
@@ -369,4 +371,178 @@ private void solveUpper( M, V, R )( M mat, V vec, ref R result ) {
         
         result[i] = ans / mat[i, i];
     }
+}
+
+/**
+Determines what type of SVD is computed.
+*/
+enum SvdType {
+    /**
+    Only compute the singular values.  The u and v elements of the returned
+    SvdResult struct will be empty.
+    */
+    valuesOnly,
+    
+    /**
+    Compute the singular values and the first min(m, n) singular vectors,
+    where m and n are the number of rows and columns in the input matrix x.
+    */
+    economy,
+    
+    /**
+    Compute the singular values and all singular vectors of x.
+    */
+    full
+}
+
+/**
+Full and economy singular value decomposition return three matrices,
+as documented below.
+*/
+struct SvdResult(F) {
+    /// The left singular vectors of x.
+    Matrix!F u;
+    
+    /// The singular values of x.
+    DiagonalMatrix!F s;
+    
+    /// The conjugate transpose of the right singular values of x.
+    Matrix!F vt;
+}
+
+/**
+Computes the singular value decomposition of x.  Singular value decomposition
+is a matrix factorization that factors an m by m matrix x into three matrices:
+
+u  = An m by m unitary matrix.  (The left singular vectors.)
+s  = A min(m, n) by min(m, n) diagonal matrix.  (The singular values.)
+vt = An n by n unitary matrix.  (The conjugate transpose of the 
+     right singular vectors.)
+
+This is done such that u * s * vt == x.
+*/ 
+auto svd( Matrix )( Matrix x, SvdType type )
+if( isMatrix!Matrix ) {
+    version( nodeps ) {
+        static assert( 0, "Naive SVD not implemented yet." );
+    }
+
+    uint m = to!uint( x.rows );
+    uint n = to!uint( x.columns );
+    alias Unqual!( typeof( x[0, 0] ) ) E;
+    
+    char jobType;
+    SvdResult!E ret;
+    ret.s = DiagonalMatrix!E( min( m, n ) );
+    
+    final switch( type ) {
+        case SvdType.valuesOnly:
+            jobType = 'N';
+            break;
+        case SvdType.economy:
+            jobType = 'S';
+            ret.u = typeof( ret.u )( m, min( m, n ) );
+            ret.vt = typeof( ret.vt )( min( m, n ), n );
+            break;
+        case SvdType.full:
+            jobType = 'A';
+            ret.u = typeof( ret.u )(m, m);
+            ret.vt = typeof( ret.vt )(n, n);
+            break;
+    }
+    
+    int lwork = -1;
+    int info;
+    E nWork;
+    E* work;
+
+    // Copy x to avoid destroying the input to this function, but 
+    // if it's been sliced, get rid of the excess data.
+    auto alloc = newRegionAllocator();
+    auto a = alloc.uninitializedArray!( E[] )( m * n ).ptr;
+    size_t aPos = 0;
+    foreach( j; 0..n ) {
+        foreach( i; 0..m ) {
+            a[ aPos++ ] = x[ i, j ];
+        }
+    }
+    
+    import scid.bindings.lapack.dlapack;
+    
+    // Find out how big a work array we need.
+    gesvd( jobType, jobType, m, n, a, m, ret.s.data, ret.u.data, ret.u.leading, 
+        ret.vt.data, ret.vt.leading, &nWork, lwork, info
+    );
+
+    lwork = to!int( nWork );
+    work = alloc.uninitializedArray!( E[] )( lwork ).ptr;
+    gesvd( jobType, jobType, m, n, a, m, ret.s.data, ret.u.data, ret.u.leading, 
+        ret.vt.data, ret.vt.leading, work, lwork, info
+    );
+    
+    return ret;
+}
+
+unittest {
+    auto x = Matrix!double( [[1.0, 2, 3], [7.0, 3, 8]] );
+    auto full = svd( x, SvdType.full );
+    auto econ = svd( x, SvdType.economy );
+    auto vals = svd( x, SvdType.valuesOnly );
+    
+    bool matApproxEqual( M1, M2 )( ref M1 lhs, ref M2 rhs ) {
+        if( lhs.rows != rhs.rows ) return false;
+        if( lhs.columns != rhs.columns ) return false;
+        
+        import std.math;
+        foreach( i; 0..lhs.rows ) foreach( j; 0..lhs.columns ) {
+            if( !approxEqual( lhs[i, j], rhs[i, j] ) ) return false;
+        }
+        
+        return true;
+    }
+    
+    // Values from octave.
+    auto s = DiagonalMatrix!double( [11.5525, 1.5938] );
+    assert( matApproxEqual( s, full.s ) );
+    assert( matApproxEqual( s, econ.s ) );
+    assert( matApproxEqual( s, vals.s ) );
+    
+    auto u = Matrix!double( [[-0.29586, -0.95523], [-0.95523, 0.29586]] );
+    assert( matApproxEqual( u, full.u ) );
+    assert( matApproxEqual( u, econ.u ) );
+    import std.stdio;
+   
+    auto vt = Matrix!double( 
+       [[-0.60441, -0.29928, -0.73832],
+        [ 0.70010, -0.64180, -0.31297],
+        [-0.38019, -0.70606, 0.59744]]
+    );
+    
+    auto vtSliced = vt[0..2][];
+
+    assert( matApproxEqual( vt, full.vt ) , full.vt.pretty);
+    assert( matApproxEqual( vtSliced, econ.vt ) );
+    
+    auto xTrans = eval(x.t);
+    auto fullTrans = svd( xTrans, SvdType.full );
+    auto econTrans = svd( xTrans, SvdType.economy );
+    auto valsTrans = svd( xTrans, SvdType.valuesOnly );
+
+    assert( matApproxEqual( s, fullTrans.s ) );
+    assert( matApproxEqual( s, econTrans.s ) );
+    assert( matApproxEqual( s, valsTrans.s ) );
+    
+    auto uTrans = Matrix!double( 
+       [[ 0.60441, -0.70010, -0.38019],
+        [ 0.29928,  0.64180, -0.70606],
+        [ 0.73832,  0.31297,  0.59744]]
+    );
+    
+    auto uTransSliced = uTrans[][0..2];
+    assert( matApproxEqual( uTrans, fullTrans.u ) );
+    assert( matApproxEqual( uTransSliced, econTrans.u ) );
+    
+    auto vtTrans = eval( -u );
+    assert( matApproxEqual( vtTrans, fullTrans.vt ) );
+    assert( matApproxEqual( vtTrans, econTrans.vt ) );
 }
