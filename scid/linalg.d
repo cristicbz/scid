@@ -421,15 +421,30 @@ vt = An n by n unitary matrix.  (The conjugate transpose of the
 
 This is done such that u * s * vt == x.
 */ 
-auto svd( Matrix )( Matrix x, SvdType type )
-if( isMatrix!Matrix ) {
+auto svd( Matrix )( Matrix x, SvdType type ) {
+    auto alloc = newRegionAllocator();
+    alias Unqual!( typeof( x[0, 0] ) ) E;
+    auto xCopied = ExternalMatrixView!E( x.rows, x.columns, alloc );
+    foreach( i; 0..x.rows ) foreach( j; 0..x.columns ) {
+        xCopied[i, j] = x[i, j];
+    }
+    
+    return svdDestructive( xCopied, type );
+}
+
+/**
+Perform SVD, but destroy the contents of the input matrix instead of copying it.
+x must be column major and use general storage.
+*/
+auto svdDestructive( Matrix )( ref Matrix x, SvdType type ) 
+if( isMatrix!Matrix && Matrix.storageOrder == StorageOrder.ColumnMajor ) {
     version( nodeps ) {
         static assert( 0, "Naive SVD not implemented yet." );
     }
 
+    alias Unqual!( typeof( x[0, 0] ) ) E;
     uint m = to!uint( x.rows );
     uint n = to!uint( x.columns );
-    alias Unqual!( typeof( x[0, 0] ) ) E;
     
     char jobType;
     SvdResult!E ret;
@@ -455,29 +470,19 @@ if( isMatrix!Matrix ) {
     int info;
     E nWork;
     E* work;
-
-    // Copy x to avoid destroying the input to this function, but 
-    // if it's been sliced, get rid of the excess data.
-    auto alloc = newRegionAllocator();
-    auto a = alloc.uninitializedArray!( E[] )( m * n ).ptr;
-    size_t aPos = 0;
-    foreach( j; 0..n ) {
-        foreach( i; 0..m ) {
-            a[ aPos++ ] = x[ i, j ];
-        }
-    }
-    
+  
     import scid.bindings.lapack.dlapack;
     
     // Find out how big a work array we need.
-    gesvd( jobType, jobType, m, n, a, m, ret.s.data, ret.u.data, ret.u.leading, 
-        ret.vt.data, ret.vt.leading, &nWork, lwork, info
+    gesvd( jobType, jobType, m, n, x.data, x.leading, ret.s.data, ret.u.data, 
+        ret.u.leading, ret.vt.data, ret.vt.leading, &nWork, lwork, info
     );
 
     lwork = to!int( nWork );
+    auto alloc = newRegionAllocator();
     work = alloc.uninitializedArray!( E[] )( lwork ).ptr;
-    gesvd( jobType, jobType, m, n, a, m, ret.s.data, ret.u.data, ret.u.leading, 
-        ret.vt.data, ret.vt.leading, work, lwork, info
+    gesvd( jobType, jobType, m, n, x.data, x.leading, ret.s.data, ret.u.data, 
+        ret.u.leading, ret.vt.data, ret.vt.leading, work, lwork, info
     );
     
     return ret;
