@@ -475,15 +475,18 @@ if( isMatrix!Matrix && Matrix.storageOrder == StorageOrder.ColumnMajor ) {
     import scid.bindings.lapack.dlapack;
     
     // Find out how big a work array we need.
-    gesvd( jobType, jobType, m, n, x.data, x.leading, ret.s.data, ret.u.data, 
-        ret.u.leading, ret.vt.data, ret.vt.leading, &nWork, lwork, info
+    int xlead = to!int(x.leading);
+    int ulead = to!int(ret.u.leading);
+    int vlead = to!int(ret.vt.leading);
+    gesvd( jobType, jobType, m, n, x.data, xlead, ret.s.data, ret.u.data, 
+        ulead, ret.vt.data, vlead, &nWork, lwork, info
     );
 
     lwork = to!int( nWork );
     auto alloc = newRegionAllocator();
     work = alloc.uninitializedArray!( E[] )( lwork ).ptr;
-    gesvd( jobType, jobType, m, n, x.data, x.leading, ret.s.data, ret.u.data, 
-        ret.u.leading, ret.vt.data, ret.vt.leading, work, lwork, info
+    gesvd( jobType, jobType, m, n, x.data, xlead, ret.s.data, ret.u.data, 
+        ulead, ret.vt.data, vlead, work, lwork, info
     );
     
     enforce(info == 0, "Lapack error in computing SVD:  " ~ to!string(info));    
