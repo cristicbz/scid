@@ -61,7 +61,7 @@ auto mat2 = SymmetricMatrix!double([
 auto result2 = cholesky!(MatrixTriangle.Upper)(mat2);
 ---
 */
-auto cholesky( MatrixTriangle tri = MatrixTriangle.Upper, M )( M mat )
+auto cholesky( MatrixTriangle tri = MatrixTriangle.Upper, M )( auto ref M mat )
 if( isMatrix!M ) {  
     alias M.ElementType E;
     auto ret = TriangularMatrix!( E, tri )( mat.rows, null );
@@ -71,7 +71,7 @@ if( isMatrix!M ) {
 
 /// Ditto
 auto cholesky( MatrixTriangle tri = MatrixTriangle.Upper, M, Allocator )
-( M mat, Allocator alloc ) 
+( auto ref M mat, Allocator alloc ) 
 if( isMatrix!M && isAllocator!Allocator ) {
     alias M.ElementType E;
     alias TriangularMatrix!( E, tri ).Temporary Temp;
@@ -273,7 +273,7 @@ auto ans = choleskySolve!( MatrixTriangle.Lower )( mat, vector );
 ---
 */
 auto choleskySolve( MatrixTriangle tri = MatrixTriangle.Upper, M, V )
-( M decomposedMatrix, V vector ) {
+( auto ref M decomposedMatrix, auto ref V vector ) {
     alias CommonType!( 
         typeof( decomposedMatrix[0, 0] ), typeof( vector[0]) ) F;
         
@@ -287,7 +287,7 @@ This overload allows ans to be pre-allocated.  It must have the same length
 as vector.
 */
 void choleskySolve( MatrixTriangle tri = MatrixTriangle.Upper, M, V, R )
-( M decomposedMatrix, V vector, ref R ans ) {
+( auto ref M decomposedMatrix, auto ref V vector, ref R ans ) {
     assert( decomposedMatrix.rows == vector.length, format(
         "decomposedMatrix.rows must be equal to vector.length for " ~
         "choleskySolve. (Got %s, %s)", decomposedMatrix.rows, vector.length ) );
@@ -343,7 +343,7 @@ unittest {
 // triangular.
 //
 // TODO:  Expose this somewhere in the API instead of just making it private.
-private void solveLower( M, V, R )( M mat, V vec, ref R result ) {
+private void solveLower( M, V, R )( auto ref M mat, auto ref V vec, ref R result ) {
     assert( result.length == vec.length );
     assert( mat.rows == vec.length );
     
@@ -359,7 +359,7 @@ private void solveLower( M, V, R )( M mat, V vec, ref R result ) {
 }
 
 // Ditto
-private void solveUpper( M, V, R )( M mat, V vec, ref R result ) {
+private void solveUpper( M, V, R )( auto ref M mat, auto ref V vec, ref R result ) {
     assert( result.length == vec.length );
     assert( mat.rows == vec.length );
     
@@ -400,15 +400,15 @@ enum SvdType {
 Full and economy singular value decomposition return three matrices,
 as documented below.
 */
-struct SvdResult(F) {
+struct SvdResult( U, S, VT ) {
     /// The left singular vectors of x.
-    Matrix!F u;
+    U u;
     
     /// The singular values of x.
-    DiagonalMatrix!F s;
+    S s;
     
     /// The conjugate transpose of the right singular values of x.
-    Matrix!F vt;
+    VT vt;
 }
 
 /**
@@ -422,15 +422,60 @@ vt = An n by n unitary matrix.  (The conjugate transpose of the
 
 This is done such that u * s * vt == x.
 */ 
-auto svd( Matrix )( Matrix x, SvdType type ) {
+auto svd( Matrix )( auto ref Matrix x, SvdType type ) {
     auto alloc = newRegionAllocator();
+    auto ext = copyToExternal( x, alloc );
+    return svdDestructive( ext, type );
+}
+
+/// Ditto
+auto svd( Matrix, Allocator )( auto ref Matrix x, SvdType type, Allocator alloc ) {
+    auto ret = allocateSvdResult( x, type, alloc );
+    auto alloc2 = newRegionAllocator();
+    auto ext = copyToExternal( x, alloc2 );
+    svdDestructive( ext, type, ret.tupleof );
+    return ret;
+}
+
+private auto copyToExternal( M, Allocator )( ref M x, Allocator alloc ) {
     alias Unqual!( typeof( x[0, 0] ) ) E;
     auto xCopied = ExternalMatrixView!E( x.rows, x.columns, alloc );
     foreach( i; 0..x.rows ) foreach( j; 0..x.columns ) {
         xCopied[i, j] = x[i, j];
     }
     
-    return svdDestructive( xCopied, type );
+    return xCopied;
+}
+
+private auto allocateSvdResult( M, A... )( auto ref M x, SvdType type, A alloc ) {
+    alias Unqual!( typeof( x[0, 0] ) ) E;
+    uint m = to!uint( x.rows );
+    uint n = to!uint( x.columns );
+    
+    char jobType;
+    static if( A.length ) {
+        SvdResult!( Matrix!(E).Temporary, DiagonalMatrix!(E).Temporary,
+            Matrix!(E).Temporary ) ret;
+    } else {
+        SvdResult!( Matrix!E, DiagonalMatrix!E, Matrix!E ) ret;
+    }
+    
+    ret.s = typeof( ret.s )( min( m, n ) , alloc );
+    
+    final switch( type ) {
+        case SvdType.valuesOnly:
+            break;
+        case SvdType.economy:
+            ret.u = typeof( ret.u )( m, min( m, n ), alloc );
+            ret.vt = typeof( ret.vt )( min( m, n ), n, alloc );
+            break;
+        case SvdType.full:
+            ret.u = typeof( ret.u )( m, m, alloc );
+            ret.vt = typeof( ret.vt )( n, n, alloc );
+            break;
+    }
+    
+    return ret;
 }
 
 /**
@@ -439,65 +484,106 @@ x must be column major and use general storage.
 */
 auto svdDestructive( Matrix )( ref Matrix x, SvdType type ) 
 if( isMatrix!Matrix && Matrix.storageOrder == StorageOrder.ColumnMajor ) {
-    version( nodeps ) {
-        static assert( 0, "Naive SVD not implemented yet." );
-    }
+    auto ret = allocateSvdResult( x, type );
+    svdDestructive( x, type, ret.tupleof );
+    return ret;
+}
 
-    alias Unqual!( typeof( x[0, 0] ) ) E;
-    uint m = to!uint( x.rows );
-    uint n = to!uint( x.columns );
+/// Ditto
+auto svdDestructive( Matrix, Allocator )( ref Matrix x, SvdType type, Allocator alloc ) 
+if( isMatrix!Matrix && Matrix.storageOrder == StorageOrder.ColumnMajor ) {
+    auto ret = allocateSvdResult( x, type, alloc );
+    svdDestructive( x, type, ret.tupleof );
+    return ret;
+}
+
+/**
+Perform SVD, writing the results to the user-provided matrices.
+
+Params:
+
+x = An m by n input matrix.
+
+type = The type of SVD to be performed.
+
+u = A matrix of left singular vectors.  Must be m by m for full SVD, or m by
+    min(m, n) for economy SVD.  Ignored for value-only SVD.
+    
+s = A diagonal matrix of singular values.  Must be min(m, n) by min(m, n).
+
+vt = A matrix of right singular values.  Must be n by n for full SVD, or
+    min(m, n) by n for economy SVD.  Ignored for value-only SVD.
+*/
+void svdDestructive( M, U, S, VT ) 
+( ref M x, SvdType type, ref U u, ref S s, ref VT vt ) {
+    // TODO:  Lock this function down w/ constraints and stuff.
+    version( nodeps ) {
+        static assert( 0, "No naive SVD implementation yet." );
+    }
     
     char jobType;
-    SvdResult!E ret;
-    ret.s = DiagonalMatrix!E( min( m, n ) );
     
+    int m = to!int( x.rows );
+    int n = to!int( x.columns );
+    
+    void checkSize( M )( ref M m, int rows, int cols, string name ) {
+        enforce( m.rows == rows && m.columns == cols, format(
+            "Need %s to be of size %s by %s, not %s by %s for SvdType.%s",
+            name, rows,cols, m.rows, m.columns, type
+        ));
+    }            
+    
+    checkSize( s, min(m, n), min(m, n), "s" );    
     final switch( type ) {
         case SvdType.valuesOnly:
             jobType = 'N';
             break;
         case SvdType.economy:
             jobType = 'S';
-            ret.u = typeof( ret.u )( m, min( m, n ) );
-            ret.vt = typeof( ret.vt )( min( m, n ), n );
+            checkSize( u, m, min( m, n ), "u" );
+            checkSize( vt, min( m, n ), n, "vt" );            
             break;
         case SvdType.full:
             jobType = 'A';
-            ret.u = typeof( ret.u )(m, m);
-            ret.vt = typeof( ret.vt )(n, n);
+            checkSize( u, m, m, "u" );
+            checkSize( vt, n, n, "vt" );
             break;
-    }
-    
+    }    
+
+    alias typeof( x[0, 0] ) E;
     int lwork = -1;
     int info;
     E nWork;
     E* work;
   
+    // TODO:  Add this to the Lapack struct and make a naive impl.
     import scid.bindings.lapack.dlapack;
     
     // Find out how big a work array we need.
     int xlead = to!int(x.leading);
-    int ulead = to!int(ret.u.leading);
-    int vlead = to!int(ret.vt.leading);
-    gesvd( jobType, jobType, m, n, x.data, xlead, ret.s.data, ret.u.data, 
-        ulead, ret.vt.data, vlead, &nWork, lwork, info
+    int ulead = to!int(u.leading);
+    int vlead = to!int(vt.leading);
+    gesvd( jobType, jobType, m, n, x.data, xlead, s.data, u.data, 
+        ulead, vt.data, vlead, &nWork, lwork, info
     );
 
     lwork = to!int( nWork );
     auto alloc = newRegionAllocator();
     work = alloc.uninitializedArray!( E[] )( lwork ).ptr;
-    gesvd( jobType, jobType, m, n, x.data, xlead, ret.s.data, ret.u.data, 
-        ulead, ret.vt.data, vlead, work, lwork, info
+    gesvd( jobType, jobType, m, n, x.data, xlead, s.data, u.data, 
+        ulead, vt.data, vlead, work, lwork, info
     );
     
     enforce(info == 0, "Lapack error in computing SVD:  " ~ to!string(info));    
-    return ret;
 }
 
 unittest {
     auto x = Matrix!double( [[1.0, 2, 3], [7.0, 3, 8]] );
+    auto alloc = newRegionAllocator();
     auto full = svd( x, SvdType.full );
-    auto econ = svd( x, SvdType.economy );
-    auto vals = svd( x, SvdType.valuesOnly );
+    auto econ = svd( x, SvdType.economy, alloc );
+    auto xx = copyToExternal( x, alloc );
+    auto vals = svdDestructive( xx, SvdType.valuesOnly, alloc );
     
     bool matApproxEqual( M1, M2 )( ref M1 lhs, ref M2 rhs ) {
         if( lhs.rows != rhs.rows ) return false;
