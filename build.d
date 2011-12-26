@@ -63,30 +63,42 @@ body
 {
     string libBLAS, libLAPACK;
     string compilerName = "dmd";
-    getopt(args, config.passThrough, 
-        "blas", &libBLAS, 
+    getopt(args, config.passThrough,
+        "blas", &libBLAS,
         "lapack", &libLAPACK,
         "compiler", &compilerName
     );
-    
+
     if(args.length < 2) {
         printUsage();
         return -1;
     }
-    
+
     try
     {
         immutable flags = (args.length > 2) ? (join(args[2..$], " ")) : "";
-        
-        if (args[1] == "lib")           buildLib(compilerName, flags, libBLAS, libLAPACK);
-        else if (args[1] == "demo")     buildDemo(compilerName, flags, libBLAS, libLAPACK);
-        else if (args[1] == "headers")  buildHeaders();
-        else if (args[1] == "html")     buildHTML();
-        else if (args[1] == "clean")    buildClean();
-        else {
-            printUsage();
+
+        switch(args[1]) {
+            case "lib":
+            case "libs":
+                buildLib(compilerName, flags, libBLAS, libLAPACK);
+                break;
+            case "demo":
+                buildDemo(compilerName, flags, libBLAS, libLAPACK);
+                break;
+            case "headers":
+                buildHeaders();
+                break;
+            case "html":
+                buildHTML();
+                break;
+            case "clean":
+                buildClean();
+                break;
+            default:
+                printUsage();
         }
-        
+
         return 0;
     }
     catch (Exception e)
@@ -104,8 +116,8 @@ void buildLib(string compiler, string flags, string libBLAS, string libLAPACK)
     ensureDir(libDir);
     auto sources = getSources();
 
-    version (Posix)     immutable libFile = "lib"~libName;
-    version (Windows)   immutable libFile = libName;
+    version (Posix)     immutable libFile = "lib"~libName~".a";
+    version (Windows)   immutable libFile = libName~".lib";
 
     auto buildCmd = compiler ~ " -lib " ~ flags;
     if(libBLAS.length) buildCmd ~= " " ~ libBLAS;
@@ -122,11 +134,11 @@ void buildDemo(string compiler, string flags, string libBLAS, string libLAPACK)
     ensureDir(libDir);
     auto sources = getSources();
 
-    auto buildCmd = compiler ~ " -version=demo " ~ flags;
+    auto buildCmd = compiler ~ " -unittest -version=demo " ~ flags;
     if(libBLAS.length) buildCmd ~= " " ~ libBLAS;
     if(libLAPACK.length) buildCmd ~= " " ~ libLAPACK;
     buildCmd ~= " " ~ std.string.join(sources, " ")
-        ~" -od"~libDir~" -ofdemo";
+        ~" -ofdemo";
     writeln(buildCmd);
     enforce(system(buildCmd) == 0, "Error building demo");
 }
@@ -241,7 +253,7 @@ void unzip(string zipFile, string toDir)
     foreach (member; zip.directory)
     {
         if (member.name[$-1] == '/') continue;  // Skip directory names
-        
+
         immutable f = std.path.join(toDir, member.name);
         ensureDir(dirname(f));
         std.file.write(f, zip.expand(member));
@@ -249,7 +261,7 @@ void unzip(string zipFile, string toDir)
 }
 
 void printUsage() {
-    enum usage = 
+    enum usage =
 "Build tool for SciD.
 Usage:  build target [options...] [compiler flags...]
 
@@ -261,23 +273,23 @@ Targets:
     clean   = Remove all files from previous build attempts.
 
 Options:
-    --compiler = The name of the compiler command (default = dmd).  If 
-                 another compiler (e.g. GDC or LDC) is used, then the 
+    --compiler = The name of the compiler command (default = dmd).  If
+                 another compiler (e.g. GDC or LDC) is used, then the
                  adapter script (gdmd or ldmd2) should be provided to this
                  command so that a DMD-style argument syntax is accepted.
-    
+
     --blas     = A BLAS library file to be included in the generated library.
                  If none is provided, then a BLAS library will need to be
                  explicitly provided when building a SciD application.
-                 
+
     --lapack   = A LAPACK library file to be included in the generated library.
                  If none is provided, then a LAPACK library will need to be
                  explicitly provided when building a SciD application.
-                 
+
 All other command line arguments are interpreted as compiler flags.
 Example:
-    
-./build lib --compiler gdmd --blas /usr/lib/libblas.a 
+
+./build lib --compiler gdmd --blas /usr/lib/libblas.a
   --lapack /usr/lib/liblapack.a -m64 -O -inline -release";
 
     writeln(usage);
