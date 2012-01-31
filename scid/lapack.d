@@ -137,7 +137,7 @@ private struct naive_ {
 			writeln( "<n> ..." );
 	}
 
-	static void laswp( T )( size_t n, T *a, size_t lda, size_t k1, size_t k2, int *ipiv, size_t incx ) {
+	static void laswp( T )( size_t n, T *a, size_t lda, size_t k1, size_t k2, int *ipiv, sizediff_t incx ) {
 		reportNaiveln_();
 
 		// convert FORTRAN indices
@@ -158,7 +158,7 @@ private struct naive_ {
 		            blas.swap( n, a + i, lda, a + pivot, lda );
 		    }
 		} else {
-		    for( auto i = k2; i >= k1 ; -- i ) {
+		    for( sizediff_t i = k2; i >= cast(sizediff_t) k1 ; -- i ) {
 		        int pivot = ipiv[ i ] - 1; // convert FORTRAN index
 		        if( pivot != i )
 		            blas.swap( n, a + i, lda, a + pivot, lda );
