@@ -32,7 +32,7 @@ import scid.demos.zmatprod;
 
 
 
-version(Windows) {
+version(none) {
     // We can't systematically run all the tests on Windows because SciD is so
     // good at blowing up OptLink.
     void main() {
@@ -41,6 +41,7 @@ version(Windows) {
         eval( x[0..2][] * y[][0..2] );
         //writeln(z.pretty);
 
+        dMatInvTest();
         testIssue51();
         readln();
     }
