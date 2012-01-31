@@ -110,7 +110,7 @@ struct SymmetricArrayAdapter( ContainerRef_, MatrixTriangle tri_, StorageOrder s
 		size_  = other.size_;
 	}
 
-	static if( is( typeof( containerRef_.resize( 0, 0 ) ) ) ) {
+	static if( is( typeof( containerRef_.resize( 0 ) ) ) ) {
         void resize( A ... )( size_t newRows, size_t newCols, A arrayArgs )
         in {
             checkSquareDims_!"symmetric"( newRows, newCols );

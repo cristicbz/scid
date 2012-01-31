@@ -95,6 +95,11 @@ struct PackedStorage( ContainerRef_ ) {
 		}
 	}
 	
+    void resize( A ... )( size_t newRows, size_t newCols, A arrayArgs ) 
+    if( is( typeof( containerRef_.resize( newRows, newCols, arrayArgs ) ) ) ) {
+        containerRef_.resize( newRows, newCols, arrayArgs );
+    }
+		
 	@property {
 		
 		// -- This should be deduced by Matrix now -- //

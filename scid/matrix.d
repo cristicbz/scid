@@ -376,12 +376,8 @@ struct BasicMatrix( Storage_ ) {
 	    and just set the elements to zero.
 	*/
 	void resize( size_t newRows, size_t newColumns ) {
-		static if( isResizable ) {
-			storage.resize( newRows, newColumns );
-		} else {
-			this.resize( newRows, newColumns, null );
-			evalScaling( Zero!ElementType, this );
-		}
+        this.resize( newRows, newColumns, null );
+        evalScaling( Zero!ElementType, this );
 	}
 
 	/** If provided, forward popFront() to the storage type. */
