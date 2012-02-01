@@ -17,16 +17,16 @@ void dMatOpsTest() {
     enforceMatData( c, 2, 2, [-22,-49,-28,-64] );
 
 // Issue 84
-//    dSyMat s = c.t*c;
-//
-//    enforceMatData( s, 2, 2, [2885, 3752, 4880] );
-//
-//    auto d = eval( s - dSyMat([2800.,3700,4800]) );
-//    static assert( is( typeof(d) : dSyMat ) );
-//    enforceMatData( d, 2, 2, [85,52,80] );
-//    enforce( d[1][0] == 52 );
-//
-//    auto e = eval( d - b[0..2][1..3]*10 );
-//    static assert( is( typeof(e) : dGeMat ) );
-//    enforceMatData( e, 2, 2, [ 55, 12, 2, 20 ] );
+    dSyMat s = c.t*c;
+
+    enforceMatData( s, 2, 2, [2885, 3752, 4880] );
+
+    auto d = eval( s - dSyMat([2800.,3700,4800]) );
+    static assert( is( typeof(d) : dSyMat ) );
+    enforceMatData( d, 2, 2, [85,52,80] );
+    enforce( d[1][0] == 52 );
+
+    auto e = eval( d - b[0..2][1..3]*10 );
+    static assert( is( typeof(e) : dGeMat ) );
+    enforceMatData( e, 2, 2, [ 55, 12, 2, 20 ] );
 }
