@@ -184,7 +184,7 @@ private struct naive_ {
 			static if( side == 'R' ) {
 				blas.trsm!( 'R', 'U', 'N', 'N' )( n, nrhs, One!T, a, lda, b, ldb );
 				blas.trsm!( 'R', 'L', 'N', 'U' )( n, nrhs, One!T, a, lda, b, ldb );
-				for( auto i = n - 1; i >= 0 ; -- i ) {
+				for( sizediff_t i = n - 1; i >= 0 ; -- i ) {
 					int pivot = ipiv[ i ] - 1;
 					if( pivot != i )
 						blas.swap( n, b + i * ldb, 1, b + pivot * ldb, 1 );
@@ -305,7 +305,7 @@ private struct naive_ {
 				blas.scal( j, ajj, a + j*lda, 1 );
 			}
 		} else {
-			for( size_t j = n - 1 ; j >= 0 ; -- j ) {
+			for( sizediff_t j = n - 1 ; j >= 0 ; -- j ) {
 				if( diag == 'N' ) {
 					// assert( get( j, j ) != Zero!T, "fbti: Singular matrix in inverse." );
 					set( One!T / get(j,j), j, j );
