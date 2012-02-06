@@ -7,12 +7,12 @@ void zMatProdTest() {
     alias Matrix!cdouble                            ColMat;
     alias Matrix!( cdouble, StorageOrder.RowMajor ) RowMat;
 
-    auto aInit    = [ [  1. + 1.i,  2. - 1.i ], [ -1. + 2.i,  1. + 1.i ] ];
-    auto bInit    = [ [ -1. - 1.i,  2. - 2.i ], [  2. + 1.i,  0. - 1.i ] ];
-    auto correct1 = [ [  5. - 2.i,  3. - 2.i ], [  4. + 2.i,  3. + 5.i ] ];
-    auto correct2 = [ [  2. - 4.i,  3. - 4.i ], [  1. + 1.i,  6. + 1.i ] ];
-    auto correct3 = [ [ -2. - 5.i, -2. - 3.i ], [  2. - 4.i,  5. - 3.i ] ];
-    auto correct4 = [ [  4. + 2.i,  4. + 3.i ], [ -1. + 1.i, -1. + 6.i ] ];
+    auto aInit    = [ [  1. + 1i,  2. - 1i ], [ -1. + 2i,  1. + 1i ] ];
+    auto bInit    = [ [ -1. - 1i,  2. - 2i ], [  2. + 1i,  0. - 1i ] ];
+    auto correct1 = [ [  5. - 2i,  3. - 2i ], [  4. + 2i,  3. + 5i ] ];
+    auto correct2 = [ [  2. - 4i,  3. - 4i ], [  1. + 1i,  6. + 1i ] ];
+    auto correct3 = [ [ -2. - 5i, -2. - 3i ], [  2. - 4i,  5. - 3i ] ];
+    auto correct4 = [ [  4. + 2i,  4. + 3i ], [ -1. + 1i, -1. + 6i ] ];
 
     auto colA = ColMat( aInit ), colB = ColMat( bInit );
     auto rowA = RowMat( aInit ), rowB = RowMat( bInit );

@@ -15,6 +15,11 @@ import scid.common.meta;
 import scid.splines.univariate.base;
 import scid.splines.univariate.poly3;
 
+version(unittest)
+{
+    import std.math : approxEqual;
+}
+
 /** Cubic one-dimensional spline (order = 3, defect = 1).
   *
   * Natural boundary condition is zero 2nd derivative.
@@ -153,8 +158,8 @@ unittest
                         BoundCond.deriv1,
                         BoundCond.deriv1,
                         0, 27);
-    assert(spl._calcFunction(2, 1) == 8);
-    assert(spl._calcDeriv(2, 1) == 12);
+    assert(approxEqual(spl._calcFunction(2, 1), 8));
+    assert(approxEqual(spl._calcDeriv(2, 1), 12));
 }
 
 // Calculate cubic spline coefficients

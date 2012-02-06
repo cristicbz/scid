@@ -9,7 +9,7 @@ module scid.internal.assertmessages;
 import std.string;
 import std.range, std.conv;
 
-private alias to!string tos;
+package alias to!string tos;
 
 /** Checks and error messages for array-like structs. */
 mixin template ArrayChecks() {

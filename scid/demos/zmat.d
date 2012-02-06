@@ -9,11 +9,11 @@ void zMatOpsTest() {
     alias Matrix!cdouble            zGeMat;
     alias SymmetricMatrix!cdouble   zSyMat;
 
-    auto a = zGeMat( 3, [1.+4.i,2+3.i,3+2.i,4+1.i,5+0.i,6-1.i,7-2.i,8-3.i,9-4.i] );
-    auto b = zGeMat( 3, [1.+2.i,2.+1.i,3+0.i,4-1.i,5-2.i,6-3.i] );
+    auto a = zGeMat( 3, [1.+4i,2+3i,3+2i,4+1i,5+0i,6-1i,7-2i,8-3i,9-4i] );
+    auto b = zGeMat( 3, [1.+2i,2.+1i,3+0i,4-1i,5-2i,6-3i] );
 
     zGeMat c = b * a;
-    enforceMatData( c, 2, 3, [ 18 + 19.i, 33 + 22i, 45 - 8i, 60 - 23i, 72 -35i, 87 - 68i ] );
+    enforceMatData( c, 2, 3, [ 18 + 19i, 33 + 22i, 45 - 8i, 60 - 23i, 72 -35i, 87 - 68i ] );
 
 
     c[] = c[0 .. 2][ 0 .. 2 ].t * ( (b[][0] - a[1..3][0]).t * eval(c[][0]) ) / (10.+0.i);

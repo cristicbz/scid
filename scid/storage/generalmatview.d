@@ -154,7 +154,13 @@ struct BasicGeneralMatrixViewStorage( ContainerRef_ ) {
 	
 	void copy( Transpose tr = Transpose.no, Source )( auto ref Source source )
 			if( isGeneralMatrixStorage!Source ) {
-		resize( source.rows, source.columns, null );
+        
+        if( tr == Transpose.yes ) {
+            resize( source.columns, source.rows, null );
+        } else {
+            resize( source.rows, source.columns, null );
+        }
+        
 		if( !source.empty )
 			generalMatrixCopy!tr( source, this );
 	}
