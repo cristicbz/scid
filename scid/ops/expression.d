@@ -352,10 +352,8 @@ template isTransposition( Operation op ) {
 template closureOf( T ) {
 	static if( isScalar!(Unqual!T) ) { 
 		enum closureOf = Closure.Scalar;
-	} else static if( is( typeof(T.closure) : Closure ) ) {
-		enum closureOf = T.closure;
 	} else {
-		static assert( false, T.stringof ~ " is not a valid expression." );
+		enum closureOf = T.closure;
 	}
 }
 

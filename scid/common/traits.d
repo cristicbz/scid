@@ -63,18 +63,7 @@ template isConvertible( S, T ) {
 }
 
 template isScalar( T ) {
-	enum isScalar = !is( T == class ) &&
-		is( typeof((){
-			T x;// = MinusOne!T;
-			T y = x;
-			T z;
-			
-			if( x == x || x != x ) {
-				x = x;
-				x += x; x -= x; x /= x; x *= x;
-				x = x + x; x = x - x; x = x / x;
-			}
-		}()) );
+    enum isScalar = is( T : real ) || is( T : creal );
 }
 
 /** Detect whether T is a complex floating-point type. */
