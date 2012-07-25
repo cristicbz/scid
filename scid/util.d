@@ -75,7 +75,7 @@ body
             // lhs and rhs are real
             return
                 feqrel!(CommonType!(L, R))(lhs, rhs) > significantDigits*LOG2T
-             || abs(lhs - rhs) <= maxAbsDiff;
+             || scid.common.testing.abs(lhs - rhs) <= maxAbsDiff;
         }
     }
 }
