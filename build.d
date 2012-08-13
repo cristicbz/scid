@@ -153,7 +153,7 @@ void buildHeaders()
         immutable d = headerDir; // std.path.join(headerDir, dirname(s));
         ensureDir(d);
 
-        immutable diName = basename(s, ".d")~".di";
+        immutable diName = baseName(s, ".d")~".di";
         immutable cmd = "dmd "~s~" -c -o- -H -Hd"~d~" -Hf"~diName;
         writeln(cmd);
         enforce(system(cmd) == 0, "Error making header file: "~diName);
@@ -177,22 +177,22 @@ void buildHTML()
     {
         version (Posix)     auto slash = "/";
         version (Windows)   auto slash = "\\";
-        htmlFiles ~= basename(replace(s, slash, "_"),".d") ~ ".html";
+        htmlFiles ~= baseName(replace(s, slash, "_"),".d") ~ ".html";
 
         // Do not list the scid.internal.* modules in the
         // doc browser tree.
         if (std.string.indexOf(s, "internal") == -1)
             moduleList ~=
                 "\t$(MODULE "
-                ~basename(replace(s, slash, "."), ".d")
+                ~baseName(replace(s, slash, "."), ".d")
                 ~")\n";
     }
 
-    immutable modulesDdoc = std.path.join(htmlDir, "candydoc", "modules.ddoc");
+    immutable modulesDdoc = std.path.buildPath(htmlDir, "candydoc", "modules.ddoc");
     writeln("Writing "~modulesDdoc);
     std.file.write(modulesDdoc, moduleList);
 
-    immutable candyDdoc = std.path.join(htmlDir, "candydoc", "candy.ddoc");
+    immutable candyDdoc = std.path.buildPath(htmlDir, "candydoc", "candy.ddoc");
     foreach (i; 0 .. sources.length)
     {
         immutable cmd =
@@ -233,7 +233,7 @@ string[] getSources()
     if (sources == null)
     {
         foreach (string f; dirEntries(srcDir, SpanMode.depth))
-            if (isFile(f) && getExt(f) == "d") sources ~= f;
+            if (isFile(f) && extension(f) == ".d") sources ~= f;
     }
     return sources;
 }
@@ -254,8 +254,8 @@ void unzip(string zipFile, string toDir)
     {
         if (member.name[$-1] == '/') continue;  // Skip directory names
 
-        immutable f = std.path.join(toDir, member.name);
-        ensureDir(dirname(f));
+        immutable f = std.path.buildPath(toDir, member.name);
+        ensureDir(dirName(f));
         std.file.write(f, zip.expand(member));
     }
 }
