@@ -197,7 +197,7 @@ void buildHTML()
     {
         immutable cmd =
             "dmd "~sources[i]~" "~candyDdoc~" "~modulesDdoc
-            ~" -c -o- -D -Dd"~htmlDir~" -Df"~htmlFiles[i];
+            ~" -c -o- -D -Df"~htmlDir~"/"~htmlFiles[i];
         writeln(cmd);
         enforce(system(cmd) == 0, "Error making HTML file: "~htmlFiles[i]);
     }
