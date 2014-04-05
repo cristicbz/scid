@@ -154,7 +154,7 @@ void buildHeaders()
         ensureDir(d);
 
         immutable diName = baseName(s, ".d")~".di";
-        immutable cmd = "dmd "~s~" -c -o- -H -Hd"~d~" -Hf"~diName;
+        immutable cmd = "dmd "~s~" -c -o- -H -Hf"~d~"/"~diName;
         writeln(cmd);
         enforce(system(cmd) == 0, "Error making header file: "~diName);
     }
@@ -197,7 +197,7 @@ void buildHTML()
     {
         immutable cmd =
             "dmd "~sources[i]~" "~candyDdoc~" "~modulesDdoc
-            ~" -c -o- -D -Dd"~htmlDir~" -Df"~htmlFiles[i];
+            ~" -c -o- -D -Df"~htmlDir~"/"~htmlFiles[i];
         writeln(cmd);
         enforce(system(cmd) == 0, "Error making HTML file: "~htmlFiles[i]);
     }
